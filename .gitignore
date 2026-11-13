@@ -1,0 +1,8 @@
+samples/
+game/
+reference/
+local_config.json
+work/
+__pycache__/
+.DS_Store
+tools/.venv/
