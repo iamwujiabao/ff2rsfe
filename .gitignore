@@ -6,3 +6,5 @@ work/
 __pycache__/
 .DS_Store
 tools/.venv/
+bin/
+obj/

@@ -1,0 +1,86 @@
+{
+ "source-A/SAVEDATA01/BACKUP.BIN": {
+  "size": 9318960,
+  "plaintext_sha256": "a37861922f17c420672dbdbf1e487b393dd2e4afaf4b9f322b67af825da0d2d1",
+  "chk_payload": "463dfa4b77cfb2a9bbed9dfabbc65d2bf32557faaeb5985139a3ddd45f6138bc",
+  "header_chk": "8647ea5249084c222c7cd6447f5d54a00eb5199a497709755411822c1c4cf59f"
+ },
+ "source-A/SAVEDATA01/SAVEDATA.BIN": {
+  "size": 9318960,
+  "plaintext_sha256": "a37861922f17c420672dbdbf1e487b393dd2e4afaf4b9f322b67af825da0d2d1",
+  "chk_payload": "463dfa4b77cfb2a9bbed9dfabbc65d2bf32557faaeb5985139a3ddd45f6138bc",
+  "header_chk": "8647ea5249084c222c7cd6447f5d54a00eb5199a497709755411822c1c4cf59f"
+ },
+ "source-A/SYSTEMSAVEDATA00/SAVEDATA.BIN": {
+  "size": 61851984,
+  "plaintext_sha256": "b98e4d23ef000ff22895a32c85ddc8a0899f21691eaaaac0df1d8f215df25d01",
+  "chk_payload": "7f4ac72ea1216dbed3dcf39a1833d22cf55a1d60e6e7d24a46b455b0cb03778e",
+  "header_chk": "684a29bc4ba6801ca87b78775a7f3ae0ba3d5a94be3e69ffbc1966df8302ceb6"
+ },
+ "source-C/SAVEDATA00/BACKUP.BIN": {
+  "size": 9318960,
+  "plaintext_sha256": "2c5e3bffa3b52eabe3af806418133c85f92b35989238aaaf2df1469909ae5df5",
+  "chk_payload": "5691e478f2bd086fe6437ae3c5ed37eb67e99f5502c88ca514a18b33b7d937f3",
+  "header_chk": "fc1dc3b9565c8c9ee3e8b85f0cb967305c088fce2c1c193cd49ed5edfa6e5608"
+ },
+ "source-C/SAVEDATA00/SAVEDATA.BIN": {
+  "size": 9318960,
+  "plaintext_sha256": "058c9541275edc6eed71dc9f7b358dd13482dfc0a919eedbc5f5557ba9c55b5c",
+  "chk_payload": "3f0bda0ebe010a1de6ab042fc6a313ee489199f760d56093d87c56bcf495cbdf",
+  "header_chk": "1c3c089d20e6c6cd2dfcaaecc0002d2184ecbeb1ddbad8efb929b6e996a2aca1"
+ },
+ "source-C/SAVEDATA01/BACKUP.BIN": {
+  "size": 9318960,
+  "plaintext_sha256": "09850411f39d4acfdae62f8433e761f4a807e4445745c5f050252d6397a1225b",
+  "chk_payload": "2f7262a70266377dcf14913593ae20e2ae4f7b5a2ed4b7705955b2ef32297d33",
+  "header_chk": "6b58684d6db400eb2145e6cf76434071d00ab83501da925facc5eee275b0892a"
+ },
+ "source-C/SAVEDATA01/SAVEDATA.BIN": {
+  "size": 9318960,
+  "plaintext_sha256": "09850411f39d4acfdae62f8433e761f4a807e4445745c5f050252d6397a1225b",
+  "chk_payload": "2f7262a70266377dcf14913593ae20e2ae4f7b5a2ed4b7705955b2ef32297d33",
+  "header_chk": "6b58684d6db400eb2145e6cf76434071d00ab83501da925facc5eee275b0892a"
+ },
+ "source-C/SYSTEMSAVEDATA00/SAVEDATA.BIN": {
+  "size": 61851984,
+  "plaintext_sha256": "83e45c6379b99dd063f4ed84d97261c43cb93b927be48d1126fe1c8819149e02",
+  "chk_payload": "4181623459194057bb8a6fdf2a511234a2039ad9104f8a5518b30cd6ea96c60c",
+  "header_chk": "f251e47732a3567742b28aaefe81e5fe046d848c2257a05a3f2017623547e472"
+ },
+ "mine/SAVEDATA00/BACKUP.BIN": {
+  "size": 9318960,
+  "plaintext_sha256": "765f1aea0cbc848f097372d83daefd22f6f41b7c97c59945165b6c63c73520ae",
+  "chk_payload": "3961f3636b849176ce8b0cd5ea972a14b4d082ad39efb3426626f629f041c082",
+  "header_chk": "95fb182b89066ed6872fa53c8b8b28aac347f6f3cc75c440e159ca869939c74f"
+ },
+ "mine/SAVEDATA00/SAVEDATA.BIN": {
+  "size": 9318960,
+  "plaintext_sha256": "45aa420702ae1a8899411fec2cb0408fee6a05c46f650e1023a7dbb0c3002de3",
+  "chk_payload": "d8f570fa8827c8e46bd08ae5a8a73bf374c3b7ab68fb4b632d689cb7effa67dc",
+  "header_chk": "0609426c99047b30406564b76db8ad88aa67a199cb83a272826068f0b4092ccf"
+ },
+ "mine/SAVEDATA01/BACKUP.BIN": {
+  "size": 9318960,
+  "plaintext_sha256": "a86a947b6118cf91c5a84f9b2c9f2d0fff3abd88b1bca92a63c8a4f099618e49",
+  "chk_payload": "e13f52dc6762548c45e3e2f226c9db49a82ad55669b7f4124a6f5d81928d84c2",
+  "header_chk": "fa2f7fab432ecb838cb42fc47e5c1a2330fdad67c3f3efd91df510f27c489e6a"
+ },
+ "mine/SAVEDATA01/SAVEDATA.BIN": {
+  "size": 9318960,
+  "plaintext_sha256": "a86a947b6118cf91c5a84f9b2c9f2d0fff3abd88b1bca92a63c8a4f099618e49",
+  "chk_payload": "e13f52dc6762548c45e3e2f226c9db49a82ad55669b7f4124a6f5d81928d84c2",
+  "header_chk": "fa2f7fab432ecb838cb42fc47e5c1a2330fdad67c3f3efd91df510f27c489e6a"
+ },
+ "mine/SAVEDATA02/BACKUP.BIN": {
+  "size": 9318960,
+  "plaintext_sha256": "e305fb64e4d10238730275fb1c21513f9f9332ce288f0fd78ba55fa4a808da2b",
+  "chk_payload": "9c86a23bac7f37905e3bf9b97e4db0ea5dfce444c601b16d9c8bce83a82a8bfe",
+  "header_chk": "2fac405cdf98c79dc33c2a4b5921a2d6a60155c376d33c5c34af2beaa460208d"
+ },
+ "mine/SAVEDATA02/SAVEDATA.BIN": {
+  "size": 9318960,
+  "plaintext_sha256": "e305fb64e4d10238730275fb1c21513f9f9332ce288f0fd78ba55fa4a808da2b",
+  "chk_payload": "9c86a23bac7f37905e3bf9b97e4db0ea5dfce444c601b16d9c8bce83a82a8bfe",
+  "header_chk": "2fac405cdf98c79dc33c2a4b5921a2d6a60155c376d33c5c34af2beaa460208d"
+ }
+}
