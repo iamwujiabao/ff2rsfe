@@ -1,0 +1,29 @@
+<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Ff2rSave.App.App" RequestedThemeVariant="Default">
+  <!-- Default = follow the OS light/dark setting -->
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+    <Style Selector="TextBlock.muted"><Setter Property="Opacity" Value="0.65" /></Style>
+    <Style Selector="TextBlock.good"><Setter Property="Foreground" Value="{DynamicResource Good}" /></Style>
+    <Style Selector="TextBlock.warn"><Setter Property="Foreground" Value="{DynamicResource WarnText}" /></Style>
+    <Style Selector="TextBlock.bad"><Setter Property="Foreground" Value="{DynamicResource BadText}" /></Style>
+    <Style Selector="TextBlock.changed"><Setter Property="Background" Value="{DynamicResource Changed}" /></Style>
+    <Style Selector="Border.banner"><Setter Property="Background" Value="{DynamicResource Warn}" /><Setter Property="Padding" Value="10" /><Setter Property="CornerRadius" Value="4" /></Style>
+    <Style Selector="Border.panel"><Setter Property="Background" Value="{DynamicResource Panel}" /><Setter Property="Padding" Value="10" /><Setter Property="CornerRadius" Value="4" /></Style>
+  </Application.Styles>
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <Color x:Key="Good">#1E7B34</Color><Color x:Key="WarnText">#9A5B00</Color><Color x:Key="BadText">#B3261E</Color>
+          <Color x:Key="Warn">#FFF4CE</Color><Color x:Key="Panel">#F0F0F0</Color><Color x:Key="Changed">#FFC9C9</Color>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <Color x:Key="Good">#5FD07A</Color><Color x:Key="WarnText">#FFC266</Color><Color x:Key="BadText">#FF8A80</Color>
+          <Color x:Key="Warn">#4A3F10</Color><Color x:Key="Panel">#2B2B2B</Color><Color x:Key="Changed">#8A2A2A</Color>
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

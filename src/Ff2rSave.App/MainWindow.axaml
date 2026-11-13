@@ -1,0 +1,74 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Ff2rSave.App.MainWindow" Title="Fatal Frame II Save Editor" Width="1180" Height="740">
+  <DockPanel Margin="16">
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <Button Content="Open folder…" Command="{Binding OpenFolderCommand}" />
+      <Button Content="Find default location (Windows)" Command="{Binding FindDefaultCommand}" IsVisible="{Binding IsWindows}" />
+      <ComboBox ItemsSource="{Binding UserFolders}" SelectedItem="{Binding SelectedUserFolder}" MinWidth="260" IsVisible="{Binding HasMultipleUserFolders}" />
+      <Button Content="Save (backup first)" Command="{Binding SaveCommand}" />
+      <Button Content="Discard / reload" Command="{Binding ReloadCommand}" />
+    </StackPanel>
+    <Border DockPanel.Dock="Top" Classes="panel" Margin="0,0,0,8"><TextBlock Text="{Binding Status}" TextWrapping="Wrap" /></Border>
+    <Border DockPanel.Dock="Top" Classes="banner" Margin="0,0,0,8">
+      <TextBlock TextWrapping="Wrap" Text="Back up your saves yourself too. Fields marked ⚠ unverified are guesses from names/values and have not been tested in the game. Saves may be bound to a user ID (header field 'User ID'); that is separate from the encryption." />
+    </Border>
+    <Grid ColumnDefinitions="330,12,*">
+      <ListBox Grid.Column="0" ItemsSource="{Binding Slots}" SelectedItem="{Binding SelectedSlot}">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <StackPanel Margin="4" Spacing="2">
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15" />
+              <TextBlock Text="{Binding Summary}" Classes="muted" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding IntegrityText}" Classes.good="{Binding IntegrityOk}" Classes.bad="{Binding !IntegrityOk}" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding BackupText}" Classes="muted" TextWrapping="Wrap" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <TabControl Grid.Column="2" x:Name="Tabs">
+        <TabItem Header="Fields">
+          <DataGrid ItemsSource="{Binding Fields}" AutoGenerateColumns="False" CanUserResizeColumns="True" GridLinesVisibility="Horizontal" IsReadOnly="False">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Field" Binding="{Binding Label}" IsReadOnly="True" Width="2*" />
+              <DataGridTextColumn Header="Value" Binding="{Binding Value, Mode=TwoWay}" Width="*" MinWidth="170" />
+              <DataGridTextColumn Header="Range" Binding="{Binding RangeText}" IsReadOnly="True" Width="Auto" />
+              <DataGridTemplateColumn Header="Status" Width="Auto" IsReadOnly="True">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding StatusText}" Margin="8,0" VerticalAlignment="Center" Classes.warn="{Binding Unverified}" Classes.bad="{Binding HasError}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Notes" Binding="{Binding Description}" IsReadOnly="True" Width="3*" />
+            </DataGrid.Columns>
+          </DataGrid>
+        </TabItem>
+        <TabItem Header="Hex (decrypted payload)">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="4">
+              <Button Content="Refresh" Command="{Binding RefreshHexCommand}" />
+              <Button Content="Go to first change" Command="{Binding GoToChangeCommand}" />
+              <TextBlock Text="{Binding HexInfo}" VerticalAlignment="Center" Classes="muted" />
+            </StackPanel>
+            <ListBox x:Name="HexList" ItemsSource="{Binding HexRows}" FontFamily="Menlo,Consolas,monospace">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Offset}" Classes="muted" Margin="0,0,12,0" />
+                    <ItemsControl ItemsSource="{Binding Cells}">
+                      <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate><TextBlock Text="{Binding Text}" Margin="0,0,5,0" Classes.changed="{Binding Changed}" /></DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding Ascii}" Classes="muted" Margin="12,0,0,0" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </TabItem>
+      </TabControl>
+    </Grid>
+  </DockPanel>
+</Window>

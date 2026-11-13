@@ -1,6 +1,6 @@
 # Fatal Frame II: Crimson Butterfly Remake - save editor (PC / Steam)
 
-Editor for **your own** single-player saves: a .NET library, a CLI (`ff2rsave`) and a WPF app (Windows only).
+Editor for **your own** single-player saves: a .NET 10 library, a CLI (`ff2rsave`) and an Avalonia desktop app.
 
 > ## ⚠ BACK UP YOUR SAVES FIRST
 > Copy the whole `Savedata` folder somewhere safe before using any tool here. The tools also make a timestamped
@@ -43,14 +43,17 @@ ff2rsave fields
 not verified). Field ids and their confidence come from `docs/fields.json`; rows other than `confirmed` are guesses.
 Exit codes: 0 ok, 1 integrity problems, 2 usage/other error.
 
-## WPF app (`src/Ff2rSave.App`, Windows)
-Open a `Savedata\<id>` folder (or use "Find default location"), pick a slot, edit values in the grid, inspect the hex diff, Save.
-It follows the system light/dark theme. **It was compile-checked but never run** (developed on macOS); expect rough edges.
+## Desktop app (`src/Ff2rSave.App`, Avalonia - macOS, Windows, Linux)
+Open a `Savedata\<id>` folder (or a single slot folder), pick a slot, edit values in the grid, inspect the hex diff, Save.
+On Windows, "Find default location" checks `%LOCALAPPDATA%\KoeiTecmo\FatalFrameII\Savedata\<id>`. It follows the system light/dark theme.
+`Ff2rSaveEditor <folder>` opens a folder directly. Tested headlessly on macOS (screenshots in light and dark theme, edit/validate/save flow);
+**not yet run on a real Windows desktop**. Fields marked ⚠ unverified are guesses.
 
 ## Build / test / publish
 ```bash
 dotnet test                         # .NET 10 SDK; tests use the git-ignored samples/ and local_config.json
-scripts/publish.sh                  # or scripts\publish.ps1 -> dist/ff2rsave.exe (single-file, self-contained, win-x64)
+scripts/publish.sh                  # CLI  -> dist/ff2rsave.exe          (single-file, self-contained, win-x64; works from macOS)
+scripts/publish-app.sh              # app  -> dist-app/Ff2rSaveEditor.exe (ship the whole folder: Skia native DLLs + fields.json sit beside the exe)
 ```
 Equivalent: `dotnet publish src/Ff2rSave.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true`.
 

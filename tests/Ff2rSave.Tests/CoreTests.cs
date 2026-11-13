@@ -149,6 +149,18 @@ public class CorruptionAndSchemaTests
     }
 }
 
+public class SchemaConsistencyTests
+{
+    [Fact]
+    public void Wildcard_paths_are_flagged_collection_and_every_field_text_roundtrips()
+    {
+        var s = Fixture.Schema; var f = SaveFile.Open(Fixture.Mine("SAVEDATA00"), Fixture.Cfg);
+        foreach (var d in s.Fields.Where(d => d.Source == "json" && d.Path.Contains('*'))) Assert.True(d.Collection, $"{d.Id} has a wildcard path but collection != true");
+        foreach (var d in s.Fields) // what the UI does for every row must not throw
+            foreach (var p in d.Source == "json" && d.Collection ? f.Expand(d.Path).Take(5) : [null]) Assert.NotNull(f.GetText(d, p));
+    }
+}
+
 public class SlotAndBackupTests
 {
     [Fact]

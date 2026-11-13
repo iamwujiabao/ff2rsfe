@@ -9,3 +9,4 @@ tools/.venv/
 bin/
 obj/
 dist/
+dist-app/

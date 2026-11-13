@@ -65,7 +65,7 @@ public sealed class SaveFile
     JsonNode? Node(string path)
     {
         JsonNode? n = Root;
-        foreach (var seg in path.Trim('/').Split('/')) n = n is JsonArray a ? a[int.Parse(seg)] : n is JsonObject o ? o[seg] : null;
+        foreach (var seg in path.Trim('/').Split('/')) n = n is JsonArray a ? (int.TryParse(seg, out var i) && i >= 0 && i < a.Count ? a[i] : null) : n is JsonObject o ? o[seg] : null;
         return n;
     }
 

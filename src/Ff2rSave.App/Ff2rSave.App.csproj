@@ -1,13 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
-    <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <RootNamespace>Ff2rSave.App</RootNamespace>
     <AssemblyName>Ff2rSaveEditor</AssemblyName>
+    <RootNamespace>Ff2rSave.App</RootNamespace>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.7" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.7" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.7" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.2.7" />
     <ProjectReference Include="..\Ff2rSave.Core\Ff2rSave.Core.csproj" />
     <None Include="..\..\docs\fields.json" Link="fields.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
