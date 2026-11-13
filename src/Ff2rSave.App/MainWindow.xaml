@@ -1,0 +1,96 @@
+<Window x:Class="Ff2rSave.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Ff2rSave.App"
+        Title="Fatal Frame II Save Editor" Width="1180" Height="740" Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}">
+  <Window.Resources>
+    <BooleanToVisibilityConverter x:Key="B2V" />
+    <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource Fg}" /></Style>
+    <Style TargetType="Button"><Setter Property="Padding" Value="12,5" /><Setter Property="Margin" Value="0,0,8,0" /></Style>
+  </Window.Resources>
+  <DockPanel Margin="16">
+    <!-- toolbar -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+      <Button Content="Open folder…" Command="{Binding OpenFolderCommand}" />
+      <Button Content="Find default location" Command="{Binding FindDefaultCommand}" />
+      <ComboBox ItemsSource="{Binding UserFolders}" SelectedItem="{Binding SelectedUserFolder}" MinWidth="260" Margin="0,0,8,0"
+                Visibility="{Binding HasMultipleUserFolders, Converter={StaticResource B2V}}" />
+      <Button Content="Save (backup first)" Command="{Binding SaveCommand}" />
+      <Button Content="Discard / reload" Command="{Binding ReloadCommand}" />
+    </StackPanel>
+    <Border DockPanel.Dock="Top" Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}" BorderThickness="1" Padding="10" Margin="0,0,0,8">
+      <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
+    </Border>
+    <Border DockPanel.Dock="Top" Background="{DynamicResource Warn}" Padding="10" Margin="0,0,0,8">
+      <TextBlock TextWrapping="Wrap" Text="Back up your saves yourself too. Fields marked ⚠ unverified are guesses from names/values and have not been tested in the game. Saves may be bound to a user ID (header field 'User ID'); that is separate from the encryption." />
+    </Border>
+    <Grid>
+      <Grid.ColumnDefinitions><ColumnDefinition Width="330" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+      <!-- slot overview -->
+      <ListBox Grid.Column="0" ItemsSource="{Binding Slots}" SelectedItem="{Binding SelectedSlot}" Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Border}" HorizontalContentAlignment="Stretch">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <StackPanel Margin="4">
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15" />
+              <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding IntegrityText}" Foreground="{Binding IntegrityBrush}" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding BackupText}" Foreground="{DynamicResource Muted}" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <TabControl Grid.Column="2" SelectionChanged="TabControl_SelectionChanged">
+        <TabItem Header="Fields">
+          <DataGrid ItemsSource="{Binding Fields}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column"
+                    Background="{DynamicResource Bg}" Foreground="{DynamicResource Fg}" RowBackground="{DynamicResource Bg}" AlternatingRowBackground="{DynamicResource Panel}"
+                    GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Border}" EnableRowVirtualization="True" SelectionUnit="Cell">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Field" Binding="{Binding Label}" IsReadOnly="True" Width="2*" />
+              <DataGridTextColumn Header="Value" Binding="{Binding Value, UpdateSourceTrigger=LostFocus, ValidatesOnDataErrors=True}" Width="*" />
+              <DataGridTextColumn Header="Range" Binding="{Binding RangeText}" IsReadOnly="True" Width="Auto" />
+              <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" IsReadOnly="True" Width="Auto" />
+              <DataGridTextColumn Header="Notes" Binding="{Binding Description}" IsReadOnly="True" Width="3*" />
+            </DataGrid.Columns>
+            <DataGrid.RowStyle>
+              <Style TargetType="DataGridRow">
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Unverified}" Value="True"><Setter Property="Background" Value="{DynamicResource Warn}" /></DataTrigger>
+                  <DataTrigger Binding="{Binding HasError}" Value="True"><Setter Property="Background" Value="{DynamicResource Bad}" /></DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </DataGrid.RowStyle>
+          </DataGrid>
+        </TabItem>
+        <TabItem Header="Hex (decrypted payload)">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4">
+              <Button Content="Refresh" Command="{Binding RefreshHexCommand}" />
+              <Button Content="Go to first change" Command="{Binding GoToChangeCommand}" />
+              <TextBlock Text="{Binding HexInfo}" VerticalAlignment="Center" Foreground="{DynamicResource Muted}" />
+            </StackPanel>
+            <ListBox x:Name="HexList" ItemsSource="{Binding HexRows}" FontFamily="Consolas" Background="{DynamicResource Bg}" BorderThickness="0"
+                     VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Offset}" Foreground="{DynamicResource Muted}" Margin="0,0,12,0" />
+                    <ItemsControl ItemsSource="{Binding Cells}">
+                      <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <TextBlock Text="{Binding Text}" Margin="0,0,5,0" x:Name="T" />
+                          <DataTemplate.Triggers><DataTrigger Binding="{Binding Changed}" Value="True"><Setter TargetName="T" Property="Background" Value="{DynamicResource Changed}" /></DataTrigger></DataTemplate.Triggers>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding Ascii}" Margin="12,0,0,0" Foreground="{DynamicResource Muted}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </TabItem>
+      </TabControl>
+    </Grid>
+  </DockPanel>
+</Window>

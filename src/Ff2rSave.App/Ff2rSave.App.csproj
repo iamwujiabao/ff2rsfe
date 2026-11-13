@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>Ff2rSave.App</RootNamespace>
+    <AssemblyName>Ff2rSaveEditor</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Ff2rSave.Core\Ff2rSave.Core.csproj" />
+    <None Include="..\..\docs\fields.json" Link="fields.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

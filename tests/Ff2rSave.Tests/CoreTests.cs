@@ -167,3 +167,45 @@ public class SlotAndBackupTests
     }
     [Fact] public void Backup_of_missing_file_returns_null() => Assert.Null(BackupService.Backup("/nonexistent/x.BIN"));
 }
+
+public class UiSupportTests
+{
+    [Fact]
+    public void GetText_SetText_roundtrip_int_bool_and_header_and_HasChanges()
+    {
+        var f = SaveFile.Open(Fixture.Mine("SAVEDATA00"), Fixture.Cfg); var s = Fixture.Schema;
+        Assert.False(f.HasChanges);
+        Assert.Equal("5865", f.GetText(s["player.senki"]));
+        f.SetText(s["player.senki"], " 6000 "); Assert.Equal("6000", f.GetText(s["player.senki"])); Assert.True(f.HasChanges);
+        Assert.Throws<FormatException>(() => f.SetText(s["player.senki"], "abc"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => f.SetText(s["player.senki"], "-5"));
+        var b = s["record.ngp_tutorial"]; f.SetText(b, "true"); Assert.Equal("true", f.GetText(b));
+        Assert.Throws<FormatException>(() => f.SetText(b, "maybe"));
+        var g = SaveFile.Open(Fixture.Mine("SAVEDATA00"), Fixture.Cfg); g.SetText(s["hdr.user_id"], "42"); Assert.True(g.HasChanges); Assert.Equal("42", g.GetText(s["hdr.user_id"]));
+    }
+
+    [Fact]
+    public void BuildPlaintext_differs_from_original_only_where_json_changed()
+    {
+        var f = SaveFile.Open(Fixture.Mine("SAVEDATA00"), Fixture.Cfg); var s = Fixture.Schema; f.SetText(s["player.senki"], "6000");
+        var now = f.BuildPlaintext(); var orig = f.OriginalPlaintext;
+        Assert.Equal(orig.Length, now.Length);
+        int first = Enumerable.Range(0, now.Length).First(i => now[i] != orig[i]), last = Enumerable.Range(0, now.Length).Last(i => now[i] != orig[i]);
+        Assert.InRange(first, SaveFile.JsonStart, SaveFile.JsonAreaEnd); Assert.True(last < SaveFile.JsonAreaEnd);
+    }
+
+    [Fact]
+    public void Locator_finds_digit_folders_and_resolves_slots()
+    {
+        var t = Path.Combine(Path.GetTempPath(), "ff2r-loc-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var root = SaveLocator.DefaultRoot(t); Directory.CreateDirectory(Path.Combine(root, "1000000000", "SAVEDATA00")); Directory.CreateDirectory(Path.Combine(root, "notdigits"));
+            File.WriteAllBytes(Path.Combine(root, "1000000000", "SAVEDATA00", "SAVEDATA.BIN"), [1]);
+            Assert.Equal([Path.Combine(root, "1000000000")], SaveLocator.FindUserFolders(t));
+            Assert.Single(SaveLocator.ResolveSlots(Path.Combine(root, "1000000000")));
+            Assert.Empty(SaveLocator.FindUserFolders(Path.Combine(t, "missing")));
+        }
+        finally { if (Directory.Exists(t)) Directory.Delete(t, true); }
+    }
+}

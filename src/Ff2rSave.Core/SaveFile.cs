@@ -19,11 +19,11 @@ public sealed class SaveFile
     public bool Dirty { get; private set; }
     public List<string> LoadProblems { get; }
 
-    long? origProgress, origPlayTime;
+    long? origProgress, origPlayTime; readonly byte[] origHeader;
 
     SaveFile(CryptoConfig cfg, SaveHeader h, byte[] pt, long fileLen)
     {
-        this.cfg = cfg; Header = h; plaintext = pt; OriginalPlaintext = (byte[])pt.Clone();
+        this.cfg = cfg; Header = h; origHeader = (byte[])h.Raw.Clone(); plaintext = pt; OriginalPlaintext = (byte[])pt.Clone();
         LoadProblems = new IntegrityService(cfg).Verify(h, pt, fileLen);
         if (h.IsSystem == false && pt.Length < JsonAreaEnd) throw new SaveFormatException("Payload too short for a user save.");
         OriginalJsonLength = FindJsonLength(pt);
@@ -105,20 +105,50 @@ public sealed class SaveFile
     }
 
     /// <summary>Returns the encrypted file bytes with all integrity fields recomputed. Untouched JSON is written back byte-for-byte.</summary>
-    public byte[] ToBytes()
+    /// <summary>Current decrypted payload including pending JSON edits (header not included). Used by the hex diff view.</summary>
+    public byte[] BuildPlaintext()
     {
         var pt = (byte[])plaintext.Clone();
-        if (Dirty)
-        {
-            var json = Encoding.UTF8.GetBytes(Root.ToJsonString(Compact));
-            if (JsonStart + json.Length > JsonAreaEnd && Header.IsUser) throw new SaveFormatException($"JSON grew to {json.Length} bytes; the area holds {JsonAreaEnd - JsonStart}.");
-            int oldEnd = JsonStart + OriginalJsonLength, newEnd = JsonStart + json.Length;
-            if (newEnd > pt.Length) throw new SaveFormatException("JSON no longer fits in the payload.");
-            if (newEnd > oldEnd && OriginalPlaintext.AsSpan(oldEnd, newEnd - oldEnd).IndexOfAnyExcept((byte)0) >= 0) throw new SaveFormatException("JSON growth would overwrite non-padding data.");
-            json.CopyTo(pt, JsonStart); if (newEnd < oldEnd) Array.Clear(pt, newEnd, oldEnd - newEnd);
-        }
+        if (!Dirty) return pt;
+        var json = Encoding.UTF8.GetBytes(Root.ToJsonString(Compact));
+        if (JsonStart + json.Length > JsonAreaEnd && Header.IsUser) throw new SaveFormatException($"JSON grew to {json.Length} bytes; the area holds {JsonAreaEnd - JsonStart}.");
+        int oldEnd = JsonStart + OriginalJsonLength, newEnd = JsonStart + json.Length;
+        if (newEnd > pt.Length) throw new SaveFormatException("JSON no longer fits in the payload.");
+        if (newEnd > oldEnd && OriginalPlaintext.AsSpan(oldEnd, newEnd - oldEnd).IndexOfAnyExcept((byte)0) >= 0) throw new SaveFormatException("JSON growth would overwrite non-padding data.");
+        json.CopyTo(pt, JsonStart); if (newEnd < oldEnd) Array.Clear(pt, newEnd, oldEnd - newEnd);
+        return pt;
+    }
+
+    /// <summary>Returns the encrypted file bytes with all integrity fields recomputed. Untouched JSON is written back byte-for-byte.</summary>
+    public byte[] ToBytes()
+    {
+        var pt = BuildPlaintext();
         SyncHeader();
         var h = new SaveHeader(Header.Raw); new IntegrityService(cfg).Fix(h, pt);
         return new SaveCodec(cfg).Encrypt(h, pt);
+    }
+
+    /// <summary>True when any edit is pending (JSON or header).</summary>
+    public bool HasChanges => Dirty || !Header.Raw.AsSpan().SequenceEqual(origHeader);
+
+    /// <summary>Display text for a field value (header number, JSON number/bool).</summary>
+    public string GetText(FieldDef f, string? concretePath = null)
+    {
+        if (f.Source == "header") return GetInt(f).ToString();
+        var n = Node(concretePath ?? Single(f)); if (n is null) return "";
+        return n is JsonValue v && v.TryGetValue<bool>(out var b) ? (b ? "true" : "false") : n is JsonValue ? n.ToJsonString() : $"<{n.GetType().Name}>";
+    }
+
+    /// <summary>Parse user text according to the field/node type and apply it with validation. Throws FormatException/ArgumentOutOfRangeException/InvalidOperationException.</summary>
+    public void SetText(FieldDef f, string text, string? concretePath = null)
+    {
+        text = text.Trim();
+        bool isBool = f.Type == "bool" || (f.Source == "json" && Node(concretePath ?? Single(f)) is JsonValue jv && jv.TryGetValue<bool>(out _));
+        if (isBool)
+        {
+            bool b = text.ToLowerInvariant() switch { "true" or "1" or "yes" => true, "false" or "0" or "no" => false, _ => throw new FormatException($"'{text}' is not true/false") };
+            SetBool(f, b, concretePath);
+        }
+        else SetInt(f, long.Parse(text, System.Globalization.CultureInfo.InvariantCulture), concretePath);
     }
 }
