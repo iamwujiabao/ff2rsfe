@@ -10,6 +10,8 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.2.7" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.7" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.2.7" />
+    <!-- transitive via Avalonia.Desktop (Linux only); pinned to the patched 0.21.3 for GHSA-xrw6-gwf8-vvr9 -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
     <ProjectReference Include="..\Ff2rSave.Core\Ff2rSave.Core.csproj" />
     <None Include="..\..\docs\fields.json" Link="fields.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
