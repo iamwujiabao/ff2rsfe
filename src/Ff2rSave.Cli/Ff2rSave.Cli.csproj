@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>ff2rsave</AssemblyName>
+    <RootNamespace>Ff2rSave.Cli</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Ff2rSave.Core\Ff2rSave.Core.csproj" />
+    <EmbeddedResource Include="..\..\docs\fields.json" LogicalName="fields.json" />
+  </ItemGroup>
+</Project>

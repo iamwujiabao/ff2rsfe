@@ -5,5 +5,5 @@
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
-  <ItemGroup><ProjectReference Include="..\..\src\Ff2rSave.Core\Ff2rSave.Core.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="..\..\src\Ff2rSave.Core\Ff2rSave.Core.csproj" /><ProjectReference Include="..\..\src\Ff2rSave.Cli\Ff2rSave.Cli.csproj" /></ItemGroup>
 </Project>

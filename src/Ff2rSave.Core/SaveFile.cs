@@ -128,6 +128,9 @@ public sealed class SaveFile
         return new SaveCodec(cfg).Encrypt(h, pt);
     }
 
+    /// <summary>JSON text of any node by path (generic read access for the CLI), or null.</summary>
+    public string? GetRaw(string path) => Node(path)?.ToJsonString();
+
     /// <summary>True when any edit is pending (JSON or header).</summary>
     public bool HasChanges => Dirty || !Header.Raw.AsSpan().SequenceEqual(origHeader);
 
