@@ -32,19 +32,23 @@ Put `local_config.json` next to the program (or any parent folder). Deriving it 
 ## CLI
 ```text
 ff2rsave info   <file|slotdir>
-ff2rsave verify <file|dir>
+ff2rsave verify <file|dir> [--roundtrip]
 ff2rsave dump   <file> --raw out.dec | --json out.json
 ff2rsave get    <file> <fieldId>            # or: get <file> --path /MissionData/main_mission_progress
-ff2rsave set    <file|slotdir> <fieldId> <value> [--path /concrete/path] [--out new.BIN]
+ff2rsave set    <file|slotdir> <fieldId> <value> (--out <dest> | --in-place) [--path /concrete/path] [--both] [--allow-unverified]
 ff2rsave pack   <in.dec> <out.BIN>
 ff2rsave fields
 ```
-`set` on a slot directory writes both `SAVEDATA.BIN` and `BACKUP.BIN` with identical content (the game's own write order is
-not verified). Field ids and their confidence come from `docs/fields.json`; rows other than `confirmed` are guesses.
+`set` never overwrites the original by default: `--out <dest>` writes an edited **copy** (recommended); `--in-place` overwrites the original
+`SAVEDATA.BIN` only (`BACKUP.BIN` is left alone unless `--both`), after a timestamped `.bak-*` backup. Fields that are not `confirmed`
+(see `docs/fields.json`) are **locked** until you pass `--allow-unverified`. Every write goes to a temp file, is re-read and verified, then atomically replaces the target.
+`verify --roundtrip` re-encrypts each file and compares it byte-for-byte with the original, listing any differing offsets.
 Exit codes: 0 ok, 1 integrity problems, 2 usage/other error.
 
 ## Desktop app (`src/Ff2rSave.App`, Avalonia - macOS, Windows, Linux)
-Open a `Savedata\<id>` folder (or a single slot folder), pick a slot, edit values in the grid, inspect the hex diff, Save.
+Open a `Savedata\<id>` folder (or a single slot folder), pick a slot, edit values in the grid, inspect the hex diff, then **Export edited copy…** (default; the original is never touched).
+Overwriting the original is a separate, red, explicit checkbox. Unverified fields are locked until you tick "Allow editing unverified fields" and accept a warning.
+First Windows test: follow `docs/windows_test_plan.md`.
 On Windows, "Find default location" checks `%LOCALAPPDATA%\KoeiTecmo\FatalFrameII\Savedata\<id>`. It follows the system light/dark theme.
 `Ff2rSaveEditor <folder>` opens a folder directly. Tested headlessly on macOS (screenshots in light and dark theme, edit/validate/save flow);
 **not yet run on a real Windows desktop**. Fields marked ⚠ unverified are guesses.

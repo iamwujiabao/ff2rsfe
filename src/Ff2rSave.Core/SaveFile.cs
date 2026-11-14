@@ -17,6 +17,9 @@ public sealed class SaveFile
     public byte[] OriginalPlaintext { get; }
     public int OriginalJsonLength { get; }
     public bool Dirty { get; private set; }
+
+    /// <summary>Fields whose confidence is not 'confirmed' are locked unless this is turned on (UI setting / CLI --allow-unverified).</summary>
+    public bool AllowUnverified { get; set; }
     public List<string> LoadProblems { get; }
 
     long? origProgress, origPlayTime; readonly byte[] origHeader;
@@ -28,7 +31,7 @@ public sealed class SaveFile
         if (h.IsSystem == false && pt.Length < JsonAreaEnd) throw new SaveFormatException("Payload too short for a user save.");
         OriginalJsonLength = FindJsonLength(pt);
         try { Root = JsonNode.Parse(pt.AsSpan(JsonStart, OriginalJsonLength)) ?? throw new SaveFormatException("JSON section is null."); }
-        catch (JsonException ex) { throw new SaveFormatException("JSON section is invalid (wrong key or corrupted data).", ex); }
+        catch (JsonException ex) { throw new SaveFormatException("JSON section is invalid: the file is corrupted, or local_config.json belongs to a different game build.", ex); }
         origProgress = Node("/MissionData/main_mission_progress")?.GetValue<long>(); origPlayTime = Node("/PlayerData/total_play_time")?.GetValue<long>();
     }
 
@@ -44,7 +47,7 @@ public sealed class SaveFile
     {
         var r = new Utf8JsonReader(pt.AsSpan(JsonStart, Math.Min(pt.Length, JsonAreaEnd) - JsonStart), isFinalBlock: true, default);
         try { while (r.Read()) if (r.CurrentDepth == 0 && (r.TokenType == JsonTokenType.EndObject)) return (int)r.BytesConsumed; }
-        catch (JsonException ex) { throw new SaveFormatException("Cannot locate the JSON section (wrong key or corrupted data).", ex); }
+        catch (JsonException ex) { throw new SaveFormatException("Cannot find the JSON section: the file is corrupted, or local_config.json belongs to a different game build.", ex); }
         throw new SaveFormatException("Unterminated JSON section.");
     }
 
@@ -83,14 +86,19 @@ public sealed class SaveFile
     }
     public void SetBool(FieldDef f, bool value, string? concretePath = null)
     {
-        if (!f.Editable) throw new InvalidOperationException($"Field {f.Id} is read-only.");
+        CheckEditable(f);
         var segs = (concretePath ?? Single(f)).Trim('/').Split('/'); var parent = Node("/" + string.Join('/', segs[..^1]));
         if (parent is JsonArray a) a[int.Parse(segs[^1])] = value; else ((JsonObject)parent!)[segs[^1]] = value; Dirty = true;
     }
     string Single(FieldDef f) { var p = Expand(f.Path).ToList(); return p.Count == 1 ? p[0] : throw new InvalidOperationException($"Field {f.Id} is a collection ({p.Count} matches); pass a concrete path."); }
-    static void Guard(FieldDef f, long v)
+    void CheckEditable(FieldDef f)
     {
         if (!f.Editable) throw new InvalidOperationException($"Field {f.Id} is read-only.");
+        if (f.IsUnverified && !AllowUnverified) throw new InvalidOperationException($"Field {f.Id} is '{f.Confidence}' (unverified, never tested in the game) and locked. Turn on 'Allow editing unverified fields' (CLI: --allow-unverified) to edit it.");
+    }
+    void Guard(FieldDef f, long v)
+    {
+        CheckEditable(f);
         if (f.Min is { } lo && v < lo || f.Max is { } hi && v > hi) throw new ArgumentOutOfRangeException(nameof(v), $"{f.Id}: {v} outside [{f.Min}, {f.Max}]");
     }
 

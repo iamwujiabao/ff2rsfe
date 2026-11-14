@@ -5,8 +5,12 @@
       <Button Content="Open folder…" Command="{Binding OpenFolderCommand}" />
       <Button Content="Find default location (Windows)" Command="{Binding FindDefaultCommand}" IsVisible="{Binding IsWindows}" />
       <ComboBox ItemsSource="{Binding UserFolders}" SelectedItem="{Binding SelectedUserFolder}" MinWidth="260" IsVisible="{Binding HasMultipleUserFolders}" />
-      <Button Content="Save (backup first)" Command="{Binding SaveCommand}" />
+      <Button Content="{Binding SaveButtonText}" Command="{Binding SaveCommand}" />
       <Button Content="Discard / reload" Command="{Binding ReloadCommand}" />
+    </StackPanel>
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="24" Margin="0,0,0,8">
+      <CheckBox IsChecked="{Binding AllowUnverified, Mode=TwoWay}" Content="Allow editing unverified fields (never tested in the game)" />
+      <CheckBox IsChecked="{Binding OverwriteOriginal, Mode=TwoWay}" Content="Overwrite original files instead of exporting a copy (dangerous)" Foreground="{DynamicResource BadText}" />
     </StackPanel>
     <Border DockPanel.Dock="Top" Classes="panel" Margin="0,0,0,8"><TextBlock Text="{Binding Status}" TextWrapping="Wrap" /></Border>
     <Border DockPanel.Dock="Top" Classes="banner" Margin="0,0,0,8">

@@ -60,7 +60,8 @@ public sealed class FieldVM : ObservableObject
         get => text;
         set
         {
-            if (!Def.Editable || value == text) return;
+            if (value == text) return;
+            if (!Def.Editable || Locked) { Raise(); return; } // ignore typing in locked/read-only rows and redraw the old value
             text = value;
             try { file.SetText(Def, value, path); error = ""; }
             catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentOutOfRangeException or InvalidOperationException or SaveFormatException) { error = ex.Message; }
@@ -69,7 +70,9 @@ public sealed class FieldVM : ObservableObject
     }
     public bool HasError => error != "";
     public bool Unverified => Def.IsUnverified;
-    public string StatusText => HasError ? "✖ " + error : !Def.Editable ? "read-only" : Def.IsUnverified ? "⚠ unverified (" + Def.Confidence + ")" : "confirmed";
+    bool Locked => Def.IsUnverified && !file.AllowUnverified;
+    public void RefreshStatus() { Raise(nameof(StatusText)); }
+    public string StatusText => HasError ? "✖ " + error : !Def.Editable ? "read-only" : Locked ? "🔒 locked (unverified)" : Def.IsUnverified ? "⚠ unverified (" + Def.Confidence + ")" : "confirmed";
     public string RangeText => Def.Min is null ? "" : $"{Def.Min}…{Def.Max}";
     public string Description => Def.Description;
 }
@@ -111,7 +114,7 @@ public sealed class MainViewModel : ObservableObject
     public bool IsWindows => OperatingSystem.IsWindows();
 
     // UI services supplied by the window (keeps the view model free of Avalonia types)
-    public Func<Task<string?>>? PickFolder { get; set; }
+    public Func<string, Task<string?>>? PickFolder { get; set; }
     public Func<string, Task<bool>>? Confirm { get; set; }
     public Action<int>? ScrollToRow { get; set; }
 
@@ -122,6 +125,24 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand RefreshHexCommand { get; }
     public RelayCommand GoToChangeCommand { get; }
 
+    bool allowUnverified, overwriteOriginal;
+    /// <summary>Default is an exported COPY; overwriting the original is an explicit choice.</summary>
+    public bool OverwriteOriginal { get => overwriteOriginal; set { if (Set(ref overwriteOriginal, value)) Raise(nameof(SaveButtonText)); } }
+    public string SaveButtonText => overwriteOriginal ? "Save OVER original (backup first)…" : "Export edited copy…";
+
+    /// <summary>Locked by default; enabling shows a warning and needs confirmation.</summary>
+    public bool AllowUnverified
+    {
+        get => allowUnverified;
+        set { if (value == allowUnverified) return; if (value) _ = EnableUnverifiedAsync(); else SetAllow(false); }
+    }
+    async Task EnableUnverifiedAsync()
+    {
+        var ok = Confirm != null && await Confirm("WARNING: fields marked unverified are guesses from names and values. They have never been tested in the game, and a wrong edit can make a save unloadable or corrupt your progress.\n\nOnly edit a COPY, keep your own backup, and enable this only if you accept the risk.");
+        SetAllow(ok);
+    }
+    void SetAllow(bool v) { allowUnverified = v; if (file != null) file.AllowUnverified = v; foreach (var f in Fields) f.RefreshStatus(); Raise(nameof(AllowUnverified)); RaiseCommands(); }
+
     public string Status { get => status; set => Set(ref status, value); }
     public string HexInfo { get => hexInfo; set => Set(ref hexInfo, value); }
     public HexRows? HexRows { get => hexRows; private set { Set(ref hexRows, value); RaiseCommands(); } }
@@ -131,7 +152,7 @@ public sealed class MainViewModel : ObservableObject
     RelayCommand Cmd(Action<object?> run, Func<object?, bool>? can = null) { var c = new RelayCommand(run, can); commands.Add(c); return c; }
     void RaiseCommands() { foreach (var c in commands) c.RaiseCanExecuteChanged(); }
 
-    public MainViewModel()
+    public MainViewModel(string? configPath = null)
     {
         OpenFolderCommand = Cmd(async _ => await OpenFolderAsync(), _ => cfg != null);
         FindDefaultCommand = Cmd(_ => FindDefault(), _ => cfg != null);
@@ -141,12 +162,12 @@ public sealed class MainViewModel : ObservableObject
         GoToChangeCommand = Cmd(_ => { if (hexRows?.FirstChangedRow() is >= 0 and var r) ScrollToRow?.Invoke(r); }, _ => hexRows != null);
         try
         {
-            cfg = CryptoConfig.Load(FindUp("local_config.json") ?? Path.Combine(AppContext.BaseDirectory, "local_config.json"));
+            cfg = CryptoConfig.Load(CryptoConfig.Find([AppContext.BaseDirectory, Directory.GetCurrentDirectory()], configPath));
             schema = FieldSchema.Load(Path.Combine(AppContext.BaseDirectory, "fields.json"));
             Status = "Ready. Use “Open folder…” (a Savedata\\<id> folder or a single slot folder)." + (IsWindows ? " “Find default location” checks the standard Windows folder." : "");
         }
         catch (Exception ex) when (ex is SaveFormatException or IOException or KeyNotFoundException or System.Text.Json.JsonException)
-        { Status = "Setup problem: " + ex.Message + "\nCreate local_config.json by running tools/keys.py against your own FatalFrameII.exe and put it next to this program."; }
+        { Status = "Setup problem: " + ex.Message; }
         RaiseCommands();
     }
 
@@ -166,7 +187,7 @@ public sealed class MainViewModel : ObservableObject
         if (found.Count == 1) LoadFolder(found[0]);
     }
 
-    async Task OpenFolderAsync() { if (PickFolder != null && await PickFolder() is { } p) LoadFolder(p); }
+    async Task OpenFolderAsync() { if (PickFolder != null && await PickFolder("Choose a Savedata\\<id> folder or a single SAVEDATAnn slot folder") is { } p) LoadFolder(p); }
 
     /// <summary>Open a folder given on the command line / by tests.</summary>
     public void OpenPath(string folder) => LoadFolder(folder);
@@ -189,7 +210,7 @@ public sealed class MainViewModel : ObservableObject
         {
             try
             {
-                file = selected.Folder.OpenSave();
+                file = selected.Folder.OpenSave(); file.AllowUnverified = allowUnverified;
                 foreach (var d in schema.Fields)
                 {
                     if (d.Source == "json" && (d.Collection || d.Path.Contains('*')))
@@ -222,15 +243,23 @@ public sealed class MainViewModel : ObservableObject
 
     async Task SaveAsync()
     {
-        if (file == null || selected == null || Confirm == null) return;
-        var ok = await Confirm($"Write {selected.Name}\\SAVEDATA.BIN and BACKUP.BIN?\n\nTimestamped .bak-* copies of both files are made first, then the files are re-read and verified.\nEdits to ⚠ unverified fields are untested in the game; keep your own backup.");
-        if (!ok) return;
+        if (file == null || selected == null) return;
+        if (!overwriteOriginal)
+        {
+            if (PickFolder == null) return;
+            var dest = await PickFolder("Choose a folder for the edited copy. A sub-folder named like the slot (e.g. SAVEDATA00) is created inside it; your original is not touched.");
+            if (dest == null) return;
+            try { var w = selected.Folder.Export(file, Path.Combine(dest, selected.Name)); Status = $"Exported edited copy to {w} (original untouched). Verified OK."; }
+            catch (Exception ex) when (ex is SaveFormatException or IOException or UnauthorizedAccessException) { Status = "Export FAILED: " + ex.Message + " (the original was not touched)."; }
+            return;
+        }
+        if (Confirm == null || !await Confirm($"OVERWRITE THE ORIGINAL?\n\nThis replaces {selected.Name}\\SAVEDATA.BIN with your edited version. BACKUP.BIN is left unchanged. A timestamped .bak-* copy of SAVEDATA.BIN is made first, then the new file is verified.\n\nExporting a copy is safer.")) return;
         try
         {
-            var made = selected.Folder.Save(file); var name = selected.Name; selected.Refresh(); LoadSlot();
-            Status = $"Saved {name}. Verified OK. Backups: {string.Join(", ", made.Select(Path.GetFileName))}";
+            var made = selected.Folder.Save(file, BackupFilePolicy.PrimaryOnly); var name = selected.Name; selected.Refresh(); LoadSlot();
+            Status = $"Overwrote {name}\\SAVEDATA.BIN. Verified OK. Backup: {string.Join(", ", made.Select(Path.GetFileName))}. BACKUP.BIN unchanged.";
         }
         catch (Exception ex) when (ex is SaveFormatException or IOException or UnauthorizedAccessException)
-        { Status = "Save FAILED: " + ex.Message + " (originals were backed up before writing; check the .bak-* files)."; }
+        { Status = "Save FAILED: " + ex.Message + " (the original was not replaced; any .bak-* file is a copy of it)."; }
     }
 }

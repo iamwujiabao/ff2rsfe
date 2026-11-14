@@ -51,19 +51,41 @@ public class UiTests
         {
             Assert.Equal(2, vm.Slots.Count); Assert.All(vm.Slots, s => Assert.True(s.IntegrityOk));
             Assert.True(vm.Fields.Count > 30); Assert.Contains(vm.Fields, f => f.Label.Contains("Points (senki)") && f.Value == "5865");
-            Assert.Contains(vm.Fields, f => f.Unverified && f.StatusText.StartsWith("⚠")); Assert.Contains(vm.Fields, f => f.StatusText == "confirmed");
+            Assert.Contains(vm.Fields, f => f.Unverified && f.StatusText.StartsWith("🔒")); Assert.Contains(vm.Fields, f => f.StatusText == "confirmed");
             Shot(w, "fields-light.png");
             w.RequestedThemeVariant = ThemeVariant.Dark; Shot(w, "fields-dark.png");
         }
         finally { w.Close(); Directory.Delete(dir, true); }
     }
 
+    static async Task Pump(Func<bool> done) { for (int i = 0; i < 100 && !done(); i++) { await Task.Delay(30); Dispatcher.UIThread.RunJobs(); } }
+
     [AvaloniaFact]
-    public void Edit_validates_enables_save_and_highlights_hex_changes()
+    public async Task Unverified_fields_are_locked_until_the_warning_is_accepted()
     {
         var (w, vm, dir) = Open(ThemeVariant.Light);
         try
         {
+            var senki = vm.Fields.First(f => f.Def.Id == "player.senki");
+            Assert.Equal("🔒 locked (unverified)", senki.StatusText); senki.Value = "7777"; Assert.Equal("5865", senki.Value); Assert.False(vm.SaveCommand.CanExecute(null));
+            string? warning = null; vm.Confirm = m => { warning = m; return Task.FromResult(false); };
+            vm.AllowUnverified = true; await Pump(() => warning != null); Assert.Contains("WARNING", warning); Assert.False(vm.AllowUnverified); senki.Value = "7777"; Assert.Equal("5865", senki.Value);
+            vm.Confirm = _ => Task.FromResult(true); vm.AllowUnverified = true; await Pump(() => vm.AllowUnverified);
+            Assert.True(vm.AllowUnverified); Assert.StartsWith("⚠ unverified", senki.StatusText); senki.Value = "7777"; Assert.Equal("7777", senki.Value);
+            Shot(w, "unlocked-light.png");
+        }
+        finally { w.Close(); Directory.Delete(dir, true); }
+    }
+
+    static async Task Unlock(MainViewModel vm) { vm.Confirm = _ => Task.FromResult(true); vm.AllowUnverified = true; await Pump(() => vm.AllowUnverified); }
+
+    [AvaloniaFact]
+    public async Task Edit_validates_enables_save_and_highlights_hex_changes()
+    {
+        var (w, vm, dir) = Open(ThemeVariant.Light);
+        try
+        {
+            await Unlock(vm);
             var senki = vm.Fields.First(f => f.Def.Id == "player.senki");
             Assert.False(vm.SaveCommand.CanExecute(null));
             senki.Value = "-5"; Assert.True(senki.HasError); Assert.False(vm.SaveCommand.CanExecute(null)); Assert.Contains("outside", senki.StatusText);
@@ -79,33 +101,68 @@ public class UiTests
     }
 
     [AvaloniaFact]
-    public async Task Save_flow_backs_up_writes_both_files_and_verifies()
+    public async Task Default_save_exports_a_copy_and_never_touches_the_original()
+    {
+        var (w, vm, dir) = Open(); var dest = Path.Combine(Path.GetTempPath(), "ff2r-uiexp-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Assert.False(vm.OverwriteOriginal); Assert.Equal("Export edited copy…", vm.SaveButtonText); await Unlock(vm);
+            var orig = File.ReadAllBytes(Path.Combine(dir, "SAVEDATA00", "SAVEDATA.BIN")); var names = Directory.GetFiles(dir, "*", SearchOption.AllDirectories).Order().ToList();
+            string? asked = null; vm.PickFolder = t => { asked = t; return Task.FromResult<string?>(dest); };
+            vm.Fields.First(f => f.Def.Id == "player.senki").Value = "4321"; vm.Fields.First(f => f.Def.Id == "player.sen").Value = "4321";
+            vm.SaveCommand.Execute(null); await Pump(() => vm.Status.StartsWith("Exported"));
+            Assert.Contains("original is not touched", asked); Assert.StartsWith("Exported edited copy", vm.Status);
+            var cfg = CryptoConfig.Load(Path.Combine(Root, "local_config.json")); var copy = SaveFile.Open(Path.Combine(dest, "SAVEDATA00", "SAVEDATA.BIN"), cfg);
+            Assert.Empty(copy.LoadProblems); Assert.Equal(4321, copy.GetInt(new FieldSchemaHelper().Senki));
+            Assert.True(File.ReadAllBytes(Path.Combine(dir, "SAVEDATA00", "SAVEDATA.BIN")).AsSpan().SequenceEqual(orig)); Assert.Equal(names, Directory.GetFiles(dir, "*", SearchOption.AllDirectories).Order().ToList());
+            Shot(w, "after-export.png");
+        }
+        finally { w.Close(); Directory.Delete(dir, true); if (Directory.Exists(dest)) Directory.Delete(dest, true); }
+    }
+
+    sealed class FieldSchemaHelper { public FieldDef Senki => FieldSchema.Load(Path.Combine(Root, "docs", "fields.json"))["player.senki"]; }
+
+    [AvaloniaFact]
+    public async Task Overwrite_is_explicit_writes_only_SAVEDATA_backs_up_and_verifies()
     {
         var (w, vm, dir) = Open();
         try
         {
+            await Unlock(vm); vm.OverwriteOriginal = true; Assert.Contains("OVER original", vm.SaveButtonText);
+            var slot = Path.Combine(dir, "SAVEDATA00"); var backupBefore = File.ReadAllBytes(Path.Combine(slot, "BACKUP.BIN"));
             string? asked = null; vm.Confirm = m => { asked = m; return Task.FromResult(true); };
-            vm.Fields.First(f => f.Def.Id == "player.senki").Value = "4321"; vm.Fields.First(f => f.Def.Id == "player.sen").Value = "4321";
-            vm.SaveCommand.Execute(null); for (int i = 0; i < 50 && !vm.Status.StartsWith("Saved"); i++) { await Task.Delay(50); Dispatcher.UIThread.RunJobs(); }
-            Assert.NotNull(asked); Assert.Contains("BACKUP.BIN", asked); Assert.StartsWith("Saved SAVEDATA00", vm.Status);
-            var slot = Path.Combine(dir, "SAVEDATA00"); Assert.Equal(2, Directory.GetFiles(slot, "*.bak-*").Length);
-            var cfg = CryptoConfig.Load(Path.Combine(Root, "local_config.json")); Assert.Empty(SaveFile.Open(Path.Combine(slot, "BACKUP.BIN"), cfg).LoadProblems);
+            vm.Fields.First(f => f.Def.Id == "player.senki").Value = "4321";
+            vm.SaveCommand.Execute(null); await Pump(() => vm.Status.StartsWith("Overwrote"));
+            Assert.Contains("OVERWRITE THE ORIGINAL", asked); Assert.Contains("BACKUP.BIN is left unchanged", asked); Assert.StartsWith("Overwrote SAVEDATA00", vm.Status);
+            Assert.Single(Directory.GetFiles(slot, "*.bak-*")); Assert.True(File.ReadAllBytes(Path.Combine(slot, "BACKUP.BIN")).AsSpan().SequenceEqual(backupBefore));
+            var cfg = CryptoConfig.Load(Path.Combine(Root, "local_config.json")); Assert.Empty(SaveFile.Open(Path.Combine(slot, "SAVEDATA.BIN"), cfg).LoadProblems);
             Assert.Equal("4321", vm.Fields.First(f => f.Def.Id == "player.senki").Value); Assert.False(vm.SaveCommand.CanExecute(null));
-            Shot(w, "after-save.png");
+            Shot(w, "after-overwrite.png");
         }
         finally { w.Close(); Directory.Delete(dir, true); }
     }
 
     [AvaloniaFact]
-    public void Cancelled_confirmation_writes_nothing()
+    public async Task Cancelled_overwrite_confirmation_and_cancelled_export_write_nothing()
     {
         var (w, vm, dir) = Open();
         try
         {
-            vm.Confirm = _ => Task.FromResult(false); var p = Path.Combine(dir, "SAVEDATA00", "SAVEDATA.BIN"); var before = File.ReadAllBytes(p);
-            vm.Fields.First(f => f.Def.Id == "player.senki").Value = "1"; vm.SaveCommand.Execute(null); Dispatcher.UIThread.RunJobs(); Thread.Sleep(200); Dispatcher.UIThread.RunJobs();
+            await Unlock(vm); var p = Path.Combine(dir, "SAVEDATA00", "SAVEDATA.BIN"); var before = File.ReadAllBytes(p);
+            vm.Fields.First(f => f.Def.Id == "player.senki").Value = "1";
+            vm.PickFolder = _ => Task.FromResult<string?>(null); vm.SaveCommand.Execute(null); await Task.Delay(150); Dispatcher.UIThread.RunJobs();
+            vm.OverwriteOriginal = true; vm.Confirm = _ => Task.FromResult(false); vm.SaveCommand.Execute(null); await Task.Delay(150); Dispatcher.UIThread.RunJobs();
             Assert.True(File.ReadAllBytes(p).AsSpan().SequenceEqual(before)); Assert.Empty(Directory.GetFiles(dir, "*.bak-*", SearchOption.AllDirectories));
         }
         finally { w.Close(); Directory.Delete(dir, true); }
+    }
+
+    [AvaloniaFact]
+    public void Missing_config_shows_plain_language_help_instead_of_crashing()
+    {
+        var vm = new MainViewModel("/nonexistent/local_config.json");
+        Assert.StartsWith("Setup problem:", vm.Status); Assert.Contains("tools/keys.py", vm.Status); Assert.Contains("README", vm.Status);
+        Assert.False(vm.OpenFolderCommand.CanExecute(null)); vm.OpenPath("/anything"); Assert.Empty(vm.Slots);
+        var bad = Path.GetTempFileName(); try { File.WriteAllText(bad, "{ broken"); var vm2 = new MainViewModel(bad); Assert.Contains("not a valid local_config.json", vm2.Status); } finally { File.Delete(bad); }
     }
 }

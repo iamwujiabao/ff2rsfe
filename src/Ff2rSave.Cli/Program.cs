@@ -12,14 +12,17 @@ public static class Program
 
         usage: ff2rsave <command> [args] [--config local_config.json] [--fields fields.json]
           info   <file|slotdir>                      header, integrity, key fields
-          verify <file|dir>                          check integrity of every .BIN (exit 1 on problems)
+          verify <file|dir> [--roundtrip]            check integrity; --roundtrip also re-encrypts each file and compares bytes
           dump   <file> (--raw out.dec | --json out.json)   decrypted container / JSON section
           get    <file> <fieldId> | --path /Json/Path       read a value (collection fields list all items)
-          set    <file|slotdir> <fieldId> <value> [--path /concrete/path] [--out new.BIN]
+          set    <file|slotdir> <fieldId> <value> (--out <dest> | --in-place) [--path /concrete/path] [--both] [--allow-unverified]
           pack   <in.dec> <out.BIN>                  encrypt a dumped container, recomputing checksums
           fields                                     list field ids from fields.json
-        A slot dir writes SAVEDATA.BIN and BACKUP.BIN. Every write makes a timestamped .bak-* copy first
-        and is re-read and verified afterwards. BACK UP YOUR SAVES YOURSELF TOO.
+        set never overwrites the original by default:
+          --out <dest>   write an edited COPY (slotdir input: <dest> becomes the slot folder; file input: <dest> is a file or folder). Recommended.
+          --in-place     overwrite the original SAVEDATA.BIN (BACKUP.BIN is left alone unless --both). A timestamped .bak-* copy is made first.
+        Fields that are not 'confirmed' are locked: add --allow-unverified to edit them (never tested in the game).
+        Every write goes to a temp file, is re-read and verified, then atomically replaces the target. BACK UP YOUR SAVES YOURSELF TOO.
         """;
 
     public static int Run(string[] argv, TextWriter o, TextWriter e)
@@ -31,10 +34,10 @@ public static class Program
             var cmd = pos[0]; var rest = pos.Skip(1).ToList();
             var schema = LoadSchema(opt);
             if (cmd == "fields") { foreach (var f in schema.Fields) o.WriteLine($"{f.Id,-32} {f.Source,-6} {(f.Editable ? "rw" : "ro")} {f.Confidence,-9} {f.Name}"); return 0; }
-            var cfg = CryptoConfig.Load(opt.GetValueOrDefault("config") ?? FindUp("local_config.json") ?? "local_config.json");
+            var cfg = CryptoConfig.Load(CryptoConfig.Find([Directory.GetCurrentDirectory(), AppContext.BaseDirectory], opt.GetValueOrDefault("config")));
             return cmd switch
             {
-                "info" => Info(rest, cfg, schema, o), "verify" => Verify(rest, cfg, o), "dump" => Dump(rest, opt, cfg, o),
+                "info" => Info(rest, cfg, schema, o), "verify" => Verify(rest, opt, cfg, o), "dump" => Dump(rest, opt, cfg, o),
                 "get" => Get(rest, opt, cfg, schema, o), "set" => Set(rest, opt, cfg, schema, o), "pack" => Pack(rest, cfg, o),
                 _ => Fail($"unknown command '{cmd}'", e)
             };
@@ -46,11 +49,14 @@ public static class Program
 
     static int Fail(string m, TextWriter e) { e.WriteLine("error: " + m); return 2; }
 
+    static readonly HashSet<string> Flags = ["roundtrip", "in-place", "both", "allow-unverified"];
+
     static (List<string> pos, Dictionary<string, string> opt) Parse(string[] a)
     {
         var pos = new List<string>(); var opt = new Dictionary<string, string>();
         for (int i = 0; i < a.Length; i++)
-            if (a[i].StartsWith("--")) { if (i + 1 >= a.Length) throw new ArgumentException($"option {a[i]} needs a value"); opt[a[i][2..]] = a[++i]; }
+            if (a[i].StartsWith("--") && Flags.Contains(a[i][2..])) opt[a[i][2..]] = "true";
+            else if (a[i].StartsWith("--")) { if (i + 1 >= a.Length) throw new ArgumentException($"option {a[i]} needs a value"); opt[a[i][2..]] = a[++i]; }
             else pos.Add(a[i]);
         return (pos, opt);
     }
@@ -84,17 +90,36 @@ public static class Program
         return f.LoadProblems.Count == 0 ? 0 : 1;
     }
 
-    static int Verify(List<string> r, CryptoConfig cfg, TextWriter o)
+    static int Verify(List<string> r, Dictionary<string, string> opt, CryptoConfig cfg, TextWriter o)
     {
         var target = Need(r, 0, "file or dir"); var files = Directory.Exists(target) ? Directory.GetFiles(target, "*.BIN", SearchOption.AllDirectories).Order().ToList() : [target];
-        int bad = 0;
+        bool rt = opt.ContainsKey("roundtrip"); int bad = 0;
         foreach (var p in files)
         {
-            try { var f = SaveFile.Open(p, cfg); bool ok = f.LoadProblems.Count == 0; o.WriteLine($"{(ok ? "OK  " : "FAIL")} {p}{(ok ? "" : "  " + string.Join("; ", f.LoadProblems))}"); bad += ok ? 0 : 1; }
+            try
+            {
+                var raw = File.ReadAllBytes(p); var f = SaveFile.FromBytes(raw, cfg); var problems = f.LoadProblems.ToList();
+                if (rt)
+                {
+                    var again = f.ToBytes(); var d = DiffRanges(raw, again);
+                    if (d.Count == 0) o.WriteLine($"ROUNDTRIP OK   {p}  (decrypt -> re-encrypt is byte-identical, {raw.Length:N0} bytes)");
+                    else { problems.Add($"round trip differs in {d.Count} range(s): " + string.Join(", ", d.Take(10).Select(x => $"0x{x.start:X}+{x.len}{(x.start < SaveHeader.Size ? " (header)" : " (payload)")}")) + (d.Count > 10 ? ", …" : "")); }
+                }
+                bool ok = problems.Count == 0; o.WriteLine($"{(ok ? "OK  " : "FAIL")} {p}{(ok ? "" : "  " + string.Join("; ", problems))}"); bad += ok ? 0 : 1;
+            }
             catch (SaveFormatException ex) { o.WriteLine($"FAIL {p}  {ex.Message}"); bad++; }
         }
         o.WriteLine($"{files.Count - bad}/{files.Count} OK (user-ID binding is not checked here)");
         return bad == 0 ? 0 : 1;
+    }
+
+    /// <summary>Contiguous differing byte ranges between two buffers (a length mismatch counts as a range at the shorter length).</summary>
+    public static List<(int start, int len)> DiffRanges(byte[] a, byte[] b)
+    {
+        var r = new List<(int, int)>(); int n = Math.Min(a.Length, b.Length), i = 0;
+        while (i < n) { if (a[i] == b[i]) { i++; continue; } int s = i; while (i < n && a[i] != b[i]) i++; r.Add((s, i - s)); }
+        if (a.Length != b.Length) r.Add((n, Math.Abs(a.Length - b.Length)));
+        return r;
     }
 
     static int Dump(List<string> r, Dictionary<string, string> opt, CryptoConfig cfg, TextWriter o)
@@ -120,21 +145,25 @@ public static class Program
     static int Set(List<string> r, Dictionary<string, string> opt, CryptoConfig cfg, FieldSchema s, TextWriter o)
     {
         var target = Need(r, 0, "file or slot dir"); var d = s[Need(r, 1, "fieldId")]; var value = Need(r, 2, "value");
-        bool dir = Directory.Exists(target); var path = dir ? Path.Combine(target, "SAVEDATA.BIN") : target;
-        var f = SaveFile.Open(path, cfg);
+        bool dir = Directory.Exists(target); bool inPlace = opt.ContainsKey("in-place"); opt.TryGetValue("out", out var outPath);
+        if (outPath == null && !inPlace) throw new ArgumentException("refusing to modify the original. Add --out <dest> to write an edited copy (recommended) or --in-place to overwrite it (a .bak-* backup is made first).");
+        if (outPath != null && inPlace) throw new ArgumentException("use either --out or --in-place, not both.");
+        var path = dir ? Path.Combine(target, "SAVEDATA.BIN") : target;
+        var f = SaveFile.Open(path, cfg); f.AllowUnverified = opt.ContainsKey("allow-unverified");
         if (d.Collection && !opt.ContainsKey("path")) throw new ArgumentException($"{d.Id} is a collection; pass --path (see: get <file> {d.Id})");
         f.SetText(d, value, opt.GetValueOrDefault("path"));
-        if (opt.TryGetValue("out", out var outPath)) { WriteVerified(f, outPath, cfg, o); return 0; }
-        if (dir) { var made = new SlotFolder(target, cfg).Save(f); o.WriteLine($"wrote SAVEDATA.BIN and BACKUP.BIN, verified OK; backups: {string.Join(", ", made.Select(Path.GetFileName))}"); }
-        else WriteVerified(f, path, cfg, o);
-        return 0;
-    }
 
-    static void WriteVerified(SaveFile f, string path, CryptoConfig cfg, TextWriter o)
-    {
-        var data = f.ToBytes(); var b = BackupService.Backup(path); File.WriteAllBytes(path, data);
-        var back = SaveFile.Open(path, cfg); if (back.LoadProblems.Count > 0) throw new SaveFormatException($"verification failed after write: {string.Join("; ", back.LoadProblems)}");
-        o.WriteLine($"wrote {path}, verified OK" + (b != null ? $"; backup {Path.GetFileName(b)}" : ""));
+        if (dir)
+        {
+            var slot = new SlotFolder(target, cfg);
+            if (outPath != null) { var w = slot.Export(f, outPath); o.WriteLine($"wrote edited copy {w} (original untouched), verified OK"); }
+            else { var made = slot.Save(f, opt.ContainsKey("both") ? BackupFilePolicy.Both : BackupFilePolicy.PrimaryOnly); o.WriteLine($"overwrote original SAVEDATA.BIN{(opt.ContainsKey("both") ? " and BACKUP.BIN" : " (BACKUP.BIN left unchanged)")}, verified OK; backups: {string.Join(", ", made.Select(Path.GetFileName))}"); }
+            return 0;
+        }
+        var dest = outPath != null ? (Directory.Exists(outPath) ? Path.Combine(outPath, Path.GetFileName(path)) : outPath) : path;
+        if (outPath != null && Path.GetFullPath(dest) == Path.GetFullPath(path)) throw new ArgumentException("--out points at the original file; use --in-place if you really mean to overwrite it.");
+        var b = AtomicFile.WriteVerified(dest, f.ToBytes(), raw => SaveFile.FromBytes(raw, cfg).LoadProblems);
+        o.WriteLine($"wrote {dest}, verified OK" + (outPath != null ? " (original untouched)" : "") + (b != null ? $"; backup {Path.GetFileName(b)}" : "")); return 0;
     }
 
     static int Pack(List<string> r, CryptoConfig cfg, TextWriter o)
@@ -143,8 +172,7 @@ public static class Program
         if (inp.Length <= SaveHeader.Size || (inp.Length - SaveHeader.Size) % 16 != 0) throw new SaveFormatException("input is not a dumped container (header + payload, payload multiple of 16 bytes).");
         var h = new SaveHeader(inp.AsSpan(0, SaveHeader.Size)); var pt = inp.AsSpan(SaveHeader.Size).ToArray();
         new IntegrityService(cfg).Fix(h, pt); var data = new SaveCodec(cfg).Encrypt(h, pt);
-        var b = BackupService.Backup(outPath); File.WriteAllBytes(outPath, data);
-        var back = SaveFile.Open(outPath, cfg); if (back.LoadProblems.Count > 0) throw new SaveFormatException("verification failed: " + string.Join("; ", back.LoadProblems));
+        var b = AtomicFile.WriteVerified(outPath, data, raw => SaveFile.FromBytes(raw, cfg).LoadProblems);
         o.WriteLine($"wrote {outPath} ({data.Length:N0} bytes), verified OK" + (b != null ? $"; backup {Path.GetFileName(b)}" : "")); return 0;
     }
 }

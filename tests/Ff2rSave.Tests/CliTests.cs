@@ -30,29 +30,63 @@ public class CliTests
         } finally { Directory.Delete(d, true); }
     }
 
-    [Fact] public void Get_set_on_slot_writes_both_files_with_backups()
+    [Fact] public void Set_refuses_without_out_or_in_place_and_without_unverified_flag()
     {
         var d = Slot(); try
         {
-            Assert.Equal("5865", Run("get", Path.Combine(d, "SAVEDATA.BIN"), "player.senki").outp.Trim());
-            var (c, o, e) = Run("set", d, "player.senki", "9999"); Assert.True(c == 0, e + o);
-            Assert.Equal("9999", Run("get", Path.Combine(d, "BACKUP.BIN"), "player.senki").outp.Trim());
-            Assert.Equal(2, Directory.GetFiles(d, "*.bak-*").Length);
-            Assert.Equal(0, Run("verify", d).code);
+            var before = File.ReadAllBytes(Path.Combine(d, "SAVEDATA.BIN"));
+            var (c, _, e) = Run("set", d, "player.senki", "9999", "--allow-unverified"); Assert.Equal(2, c); Assert.Contains("refusing to modify the original", e);
+            var (c2, _, e2) = Run("set", d, "player.senki", "9999", "--in-place"); Assert.Equal(2, c2); Assert.Contains("locked", e2);
+            Assert.Equal(2, Run("set", d, "player.senki", "9999", "--in-place", "--out", Path.Combine(d, "x")).code);
+            Assert.True(File.ReadAllBytes(Path.Combine(d, "SAVEDATA.BIN")).AsSpan().SequenceEqual(before)); Assert.Empty(Directory.GetFiles(d, "*.bak-*"));
         } finally { Directory.Delete(d, true); }
     }
 
-    [Fact] public void Set_rejects_bad_value_and_collection_without_path_and_leaves_file_untouched()
+    [Fact] public void Set_out_writes_an_edited_copy_and_leaves_the_original_untouched()
+    {
+        var d = Slot(); var o = Path.Combine(Path.GetTempPath(), "ff2r-out-" + Guid.NewGuid().ToString("N")); try
+        {
+            var before = File.ReadAllBytes(Path.Combine(d, "SAVEDATA.BIN")); var names = Directory.GetFiles(d).Select(Path.GetFileName).Order().ToList();
+            var (c, so, e) = Run("set", d, "player.senki", "9999", "--out", o, "--allow-unverified"); Assert.True(c == 0, e + so); Assert.Contains("original untouched", so);
+            Assert.Equal("9999", Run("get", Path.Combine(o, "SAVEDATA.BIN"), "player.senki").outp.Trim()); Assert.Equal(0, Run("verify", o).code);
+            Assert.True(File.ReadAllBytes(Path.Combine(d, "SAVEDATA.BIN")).AsSpan().SequenceEqual(before)); Assert.Equal(names, Directory.GetFiles(d).Select(Path.GetFileName).Order().ToList());
+            // file input, --out as a folder
+            var o2 = Path.Combine(Path.GetTempPath(), "ff2r-out2-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(o2);
+            try { Assert.Equal(0, Run("set", Path.Combine(d, "SAVEDATA.BIN"), "player.sen", "5", "--out", o2, "--allow-unverified").code); Assert.True(File.Exists(Path.Combine(o2, "SAVEDATA.BIN"))); Assert.Equal(2, Run("set", Path.Combine(d, "SAVEDATA.BIN"), "player.sen", "5", "--out", Path.Combine(d, "SAVEDATA.BIN"), "--allow-unverified").code); }
+            finally { Directory.Delete(o2, true); }
+        } finally { Directory.Delete(d, true); if (Directory.Exists(o)) Directory.Delete(o, true); }
+    }
+
+    [Fact] public void Set_in_place_writes_only_SAVEDATA_unless_both()
     {
         var d = Slot(); try
         {
-            var p = Path.Combine(d, "SAVEDATA.BIN"); var before = File.ReadAllBytes(p);
-            Assert.Equal(2, Run("set", p, "player.senki", "-3").code);
-            Assert.Equal(2, Run("set", p, "player.senki", "abc").code);
-            Assert.Equal(2, Run("set", p, "item.num", "5").code);
-            Assert.Equal(2, Run("set", p, "hdr.chapter", "5").code); // read-only
-            Assert.True(File.ReadAllBytes(p).AsSpan().SequenceEqual(before)); Assert.Empty(Directory.GetFiles(d, "*.bak-*"));
+            var backupBefore = File.ReadAllBytes(Path.Combine(d, "BACKUP.BIN"));
+            Assert.Equal(0, Run("set", d, "player.senki", "9999", "--in-place", "--allow-unverified").code);
+            Assert.Equal("9999", Run("get", Path.Combine(d, "SAVEDATA.BIN"), "player.senki").outp.Trim());
+            Assert.True(File.ReadAllBytes(Path.Combine(d, "BACKUP.BIN")).AsSpan().SequenceEqual(backupBefore)); Assert.Single(Directory.GetFiles(d, "*.bak-*"));
+            Assert.Equal(0, Run("set", d, "player.senki", "8888", "--in-place", "--both", "--allow-unverified").code);
+            Assert.Equal("8888", Run("get", Path.Combine(d, "BACKUP.BIN"), "player.senki").outp.Trim());
         } finally { Directory.Delete(d, true); }
+    }
+
+    [Fact] public void Verify_roundtrip_passes_for_all_samples_and_reports_exact_offsets_when_bytes_differ()
+    {
+        var (c, o, _) = Run("verify", Fixture.Samples, "--roundtrip"); Assert.Equal(0, c); Assert.Equal(14, o.Split("ROUNDTRIP OK").Length - 1);
+        var d = Slot(); try
+        {
+            var p = Path.Combine(d, "SAVEDATA.BIN"); var raw = File.ReadAllBytes(p); raw[0x20] ^= 1; File.WriteAllBytes(p, raw); // header checksum no longer matches
+            var (c2, o2, _) = Run("verify", p, "--roundtrip"); Assert.Equal(1, c2); Assert.Contains("round trip differs", o2); Assert.Contains("0x70", o2); Assert.Contains("(header)", o2);
+        } finally { Directory.Delete(d, true); }
+        Assert.Equal([(1, 2)], Program.DiffRanges([1, 2, 3, 4], [1, 9, 8, 4]).Select(x => (x.start, x.len)).ToList());
+        Assert.Equal([(2, 3)], Program.DiffRanges([1, 2], [1, 2, 7, 7, 7]).Select(x => (x.start, x.len)).ToList());
+    }
+
+    [Fact] public void Missing_or_invalid_config_prints_how_to_fix_it()
+    {
+        var (c, e) = (0, ""); var o = new StringWriter(); var er = new StringWriter();
+        c = Program.Run(["info", Fixture.Mine("SAVEDATA00"), "--config", "/nope/local_config.json"], o, er); e = er.ToString(); Assert.Equal(2, c); Assert.Contains("tools/keys.py", e);
+        var bad = Path.GetTempFileName(); try { File.WriteAllText(bad, "{ broken"); er = new StringWriter(); c = Program.Run(["info", Fixture.Mine("SAVEDATA00"), "--config", bad], o, er); Assert.Equal(2, c); Assert.Contains("not a valid local_config.json", er.ToString()); } finally { File.Delete(bad); }
     }
 
     [Fact] public void Dump_raw_then_pack_roundtrips_exactly()

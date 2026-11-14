@@ -21,9 +21,15 @@ public sealed class FieldSchema
     FieldSchema(List<FieldDef> f) => Fields = f;
     public static FieldSchema Load(string path)
     {
-        using var doc = JsonDocument.Parse(File.ReadAllText(path));
-        var list = doc.RootElement.GetProperty("fields").Deserialize<List<FieldDef>>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
-        return new FieldSchema(list);
+        if (!File.Exists(path)) throw new SaveFormatException($"fields.json not found at {path}. It ships next to the program: copy the whole program folder, not just the .exe.");
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            var list = doc.RootElement.GetProperty("fields").Deserialize<List<FieldDef>>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+            return new FieldSchema(list);
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
+        { throw new SaveFormatException($"fields.json at {path} is not valid ({ex.Message}). Re-copy it from the release folder.", ex); }
     }
     public FieldDef this[string id] => Fields.FirstOrDefault(f => f.Id == id) ?? throw new KeyNotFoundException($"Unknown field '{id}'");
 }

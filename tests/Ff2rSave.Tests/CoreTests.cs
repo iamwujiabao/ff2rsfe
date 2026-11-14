@@ -60,7 +60,7 @@ public class RoundTripAndParity
 
 public class EditingTests
 {
-    static (SaveFile f, FieldSchema s) Open() => (SaveFile.Open(Fixture.Mine("SAVEDATA00"), Fixture.Cfg), Fixture.Schema);
+    static (SaveFile f, FieldSchema s) Open() { var f = SaveFile.Open(Fixture.Mine("SAVEDATA00"), Fixture.Cfg); f.AllowUnverified = true; return (f, Fixture.Schema); }
 
     [Fact]
     public void Edit_save_reload_has_valid_integrity_and_only_expected_changes()
@@ -163,61 +163,123 @@ public class SchemaConsistencyTests
 
 public class SlotAndBackupTests
 {
+    static string TempSlot() => Fixture.TempSlotFrom(Path.GetDirectoryName(Fixture.Mine("SAVEDATA00"))!);
+    static SaveFile Edited(SlotFolder slot) { var f = slot.OpenSave(); f.AllowUnverified = true; var s = Fixture.Schema; f.SetInt(s["player.senki"], 777); f.SetInt(s["player.sen"], 777); return f; }
+
     [Fact]
-    public void Save_backs_up_both_files_writes_both_and_verifies()
+    public void Default_save_writes_only_SAVEDATA_leaves_BACKUP_untouched_and_verifies()
     {
-        var cfg = Fixture.Cfg; var dir = Fixture.TempSlotFrom(Path.GetDirectoryName(Fixture.Mine("SAVEDATA00"))!);
+        var dir = TempSlot();
         try
         {
-            var slot = new SlotFolder(dir, cfg); var f = slot.OpenSave(); var s = Fixture.Schema; var before = File.ReadAllBytes(slot.SavePath);
-            f.SetInt(s["player.senki"], 777); f.SetInt(s["player.sen"], 777);
-            var backups = slot.Save(f);
-            Assert.Equal(2, backups.Count); Assert.True(File.ReadAllBytes(backups[0]).AsSpan().SequenceEqual(before));
-            Assert.True(slot.BackupIsIdentical()); Assert.Equal(777, slot.OpenBackup().GetInt(s["player.senki"]));
+            var slot = new SlotFolder(dir, Fixture.Cfg); var before = File.ReadAllBytes(slot.SavePath); var backupBefore = File.ReadAllBytes(slot.BackupPath);
+            var backups = slot.Save(Edited(slot));
+            Assert.Single(backups); Assert.True(File.ReadAllBytes(backups[0]).AsSpan().SequenceEqual(before));
+            Assert.True(File.ReadAllBytes(slot.BackupPath).AsSpan().SequenceEqual(backupBefore), "BACKUP.BIN must not change");
+            Assert.Equal(777, slot.OpenSave().GetInt(Fixture.Schema["player.senki"])); Assert.Empty(Directory.GetFiles(dir, "*.tmp-*"));
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    [Fact]
+    public void Both_policy_writes_identical_content_to_both_files_with_two_backups()
+    {
+        var dir = TempSlot();
+        try
+        {
+            var slot = new SlotFolder(dir, Fixture.Cfg); Assert.Equal(2, slot.Save(Edited(slot), BackupFilePolicy.Both).Count);
+            Assert.True(slot.BackupIsIdentical()); Assert.Equal(777, slot.OpenBackup().GetInt(Fixture.Schema["player.senki"]));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void Failed_verification_leaves_original_untouched_and_no_temp_files()
+    {
+        var dir = TempSlot();
+        try
+        {
+            var p = Path.Combine(dir, "SAVEDATA.BIN"); var before = File.ReadAllBytes(p);
+            Assert.Throws<SaveFormatException>(() => AtomicFile.WriteVerified(p, [1, 2, 3], _ => ["simulated verification problem"]));
+            Assert.Throws<SaveFormatException>(() => AtomicFile.WriteVerified(p, [1, 2, 3], _ => throw new SaveFormatException("decrypt failed")));
+            Assert.True(File.ReadAllBytes(p).AsSpan().SequenceEqual(before)); Assert.Empty(Directory.GetFiles(dir, "*.tmp-*")); Assert.Empty(Directory.GetFiles(dir, "*.bak-*"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void Unwritable_target_directory_fails_cleanly_without_touching_the_original()
+    {
+        var dir = TempSlot();
+        try
+        {
+            var slot = new SlotFolder(dir, Fixture.Cfg); var f = Edited(slot); var before = File.ReadAllBytes(slot.SavePath);
+            // a directory squatting on the temp-file's final name is not possible; instead make the target a directory-less path
+            Assert.ThrowsAny<IOException>(() => AtomicFile.WriteVerified(Path.Combine(dir, "nope", "SAVEDATA.BIN"), f.ToBytes(), _ => []));
+            Assert.True(File.ReadAllBytes(slot.SavePath).AsSpan().SequenceEqual(before));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void Export_writes_a_verified_copy_and_never_touches_the_original()
+    {
+        var dir = TempSlot(); var dest = Path.Combine(Path.GetTempPath(), "ff2r-exp-" + Guid.NewGuid().ToString("N"), "SAVEDATA00");
+        try
+        {
+            var slot = new SlotFolder(dir, Fixture.Cfg); var s1 = File.ReadAllBytes(slot.SavePath); var b1 = File.ReadAllBytes(slot.BackupPath); var names = Directory.GetFiles(dir).Select(Path.GetFileName).Order().ToList();
+            var written = slot.Export(Edited(slot), dest);
+            Assert.Equal(777, SaveFile.Open(written, Fixture.Cfg).GetInt(Fixture.Schema["player.senki"])); Assert.Empty(SaveFile.Open(written, Fixture.Cfg).LoadProblems);
+            Assert.True(File.ReadAllBytes(Path.Combine(dest, "BACKUP.BIN")).AsSpan().SequenceEqual(b1), "BACKUP.BIN is copied unchanged");
+            Assert.True(File.ReadAllBytes(slot.SavePath).AsSpan().SequenceEqual(s1)); Assert.Equal(names, Directory.GetFiles(dir).Select(Path.GetFileName).Order().ToList());
+        }
+        finally { Directory.Delete(dir, true); if (Directory.Exists(Path.GetDirectoryName(dest))) Directory.Delete(Path.GetDirectoryName(dest)!, true); }
+    }
+
+    [Fact]
+    public void Export_refuses_the_original_folder_and_folders_inside_it()
+    {
+        var dir = TempSlot();
+        try
+        {
+            var slot = new SlotFolder(dir, Fixture.Cfg); var f = Edited(slot);
+            Assert.Throws<SaveFormatException>(() => slot.Export(f, dir)); Assert.Throws<SaveFormatException>(() => slot.Export(f, Path.Combine(dir, "sub")));
+            Assert.Throws<SaveFormatException>(() => slot.Export(f, dir + Path.DirectorySeparatorChar));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     [Fact] public void Backup_of_missing_file_returns_null() => Assert.Null(BackupService.Backup("/nonexistent/x.BIN"));
 }
 
-public class UiSupportTests
+public class SafetyPolicyTests
 {
     [Fact]
-    public void GetText_SetText_roundtrip_int_bool_and_header_and_HasChanges()
+    public void Unverified_fields_are_locked_by_default_confirmed_ones_are_not()
     {
         var f = SaveFile.Open(Fixture.Mine("SAVEDATA00"), Fixture.Cfg); var s = Fixture.Schema;
-        Assert.False(f.HasChanges);
-        Assert.Equal("5865", f.GetText(s["player.senki"]));
-        f.SetText(s["player.senki"], " 6000 "); Assert.Equal("6000", f.GetText(s["player.senki"])); Assert.True(f.HasChanges);
-        Assert.Throws<FormatException>(() => f.SetText(s["player.senki"], "abc"));
-        Assert.Throws<ArgumentOutOfRangeException>(() => f.SetText(s["player.senki"], "-5"));
-        var b = s["record.ngp_tutorial"]; f.SetText(b, "true"); Assert.Equal("true", f.GetText(b));
-        Assert.Throws<FormatException>(() => f.SetText(b, "maybe"));
-        var g = SaveFile.Open(Fixture.Mine("SAVEDATA00"), Fixture.Cfg); g.SetText(s["hdr.user_id"], "42"); Assert.True(g.HasChanges); Assert.Equal("42", g.GetText(s["hdr.user_id"]));
+        var ex = Assert.Throws<InvalidOperationException>(() => f.SetInt(s["player.senki"], 1)); Assert.Contains("locked", ex.Message);
+        Assert.Throws<InvalidOperationException>(() => f.SetText(s["record.ngp_tutorial"], "true"));
+        f.SetInt(s["mission.progress"], 9031); f.SetInt(s["hdr.user_id"], 5);          // confirmed + editable
+        f.AllowUnverified = true; f.SetInt(s["player.senki"], 1); Assert.Equal(1, f.GetInt(s["player.senki"]));
     }
 
     [Fact]
-    public void BuildPlaintext_differs_from_original_only_where_json_changed()
+    public void Config_problems_give_plain_language_errors()
     {
-        var f = SaveFile.Open(Fixture.Mine("SAVEDATA00"), Fixture.Cfg); var s = Fixture.Schema; f.SetText(s["player.senki"], "6000");
-        var now = f.BuildPlaintext(); var orig = f.OriginalPlaintext;
-        Assert.Equal(orig.Length, now.Length);
-        int first = Enumerable.Range(0, now.Length).First(i => now[i] != orig[i]), last = Enumerable.Range(0, now.Length).Last(i => now[i] != orig[i]);
-        Assert.InRange(first, SaveFile.JsonStart, SaveFile.JsonAreaEnd); Assert.True(last < SaveFile.JsonAreaEnd);
-    }
-
-    [Fact]
-    public void Locator_finds_digit_folders_and_resolves_slots()
-    {
-        var t = Path.Combine(Path.GetTempPath(), "ff2r-loc-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "ff2r-cfg-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(dir);
         try
         {
-            var root = SaveLocator.DefaultRoot(t); Directory.CreateDirectory(Path.Combine(root, "1000000000", "SAVEDATA00")); Directory.CreateDirectory(Path.Combine(root, "notdigits"));
-            File.WriteAllBytes(Path.Combine(root, "1000000000", "SAVEDATA00", "SAVEDATA.BIN"), [1]);
-            Assert.Equal([Path.Combine(root, "1000000000")], SaveLocator.FindUserFolders(t));
-            Assert.Single(SaveLocator.ResolveSlots(Path.Combine(root, "1000000000")));
-            Assert.Empty(SaveLocator.FindUserFolders(Path.Combine(t, "missing")));
+            var e1 = Assert.Throws<SaveFormatException>(() => Ff2rSave.Core.CryptoConfig.Find([dir])); Assert.Contains("tools/keys.py", e1.Message); Assert.Contains("not found", e1.Message);
+            var e2 = Assert.Throws<SaveFormatException>(() => Ff2rSave.Core.CryptoConfig.Find([dir], Path.Combine(dir, "x.json"))); Assert.Contains("does not exist", e2.Message);
+            foreach (var bad in new[] { "not json", "{}", "{\"aes_key\":\"zz\",\"aes_iv\":\"00\",\"chk_A\":\"00\",\"chk_B\":\"00\"}", "{\"aes_key\":\"00\",\"aes_iv\":\"00\",\"chk_A\":\"00\",\"chk_B\":\"00\"}" })
+            {
+                var p = Path.Combine(dir, "local_config.json"); File.WriteAllText(p, bad);
+                var ex = Assert.Throws<SaveFormatException>(() => Ff2rSave.Core.CryptoConfig.Load(p)); Assert.Contains("tools/keys.py", ex.Message);
+            }
+            Assert.Throws<SaveFormatException>(() => FieldSchema.Load(Path.Combine(dir, "missing-fields.json")));
+            File.WriteAllText(Path.Combine(dir, "f.json"), "{"); Assert.Throws<SaveFormatException>(() => FieldSchema.Load(Path.Combine(dir, "f.json")));
         }
-        finally { if (Directory.Exists(t)) Directory.Delete(t, true); }
+        finally { Directory.Delete(dir, true); }
     }
 }
