@@ -217,6 +217,8 @@ public class AppliedProposalsTests
         var s = Fixture.Schema;
         Assert.Equal("likely", s["hdr.u48"].Confidence); Assert.Equal("likely", s["record.ngp_tutorial"].Confidence); Assert.False(s["hdr.u48"].Editable);
         Assert.Equal(new[] { "hdr.checkpoint", "hdr.chapter", "hdr.payload_len", "hdr.play_time", "hdr.timestamp", "hdr.user_id", "mission.progress" }.Order(), s.Fields.Where(f => f.Confidence == "confirmed").Select(f => f.Id).Order()); // uncontrolled data confirmed nothing new
+        Assert.Equal("likely", s["item.num"].Confidence); Assert.Equal("guessed", s["item.key"].Confidence); Assert.Equal("guessed", s["storage.num"].Confidence); // item.num promoted on approval; the others deliberately not
+        Assert.Contains("not confirmed", s["item.num"].Description); Assert.Contains("third-party", s["item.num"].Description);
         Assert.Equal(25, s["mission.progress"].ObservedValues!.Length); Assert.Contains(9030L, s["mission.progress"].ObservedValues!);
         Assert.Equal(10, s["player.current_film_slot"].Max); // optional tightening was deliberately NOT applied
         foreach (var id in new[] { "item.key_num", "item.entry_number" }) { var d = s[id]; Assert.True(d.Collection && !d.Editable && d.Confidence == "guessed"); }
