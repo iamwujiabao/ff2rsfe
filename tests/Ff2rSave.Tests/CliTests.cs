@@ -169,3 +169,26 @@ public class CliDiffItemsTests
         Assert.Contains("1200 row(s)", Run("items", Slot(), "--all").outp);
     }
 }
+
+
+public class CliSystemTests
+{
+    static (int code, string outp, string err) Run(params string[] a)
+    {
+        var o = new StringWriter(); var e = new StringWriter();
+        var code = Program.Run([.. a, "--config", Path.Combine(Fixture.Root, "local_config.json"), "--fields", Path.Combine(Fixture.Root, "docs", "fields.json"), "--system-fields", Fixture.SystemFields], o, e); return (code, o.ToString(), e.ToString());
+    }
+
+    [Fact] public void Info_get_diff_work_on_system_saves_and_set_refuses()
+    {
+        var (full, empty) = Fixture.SystemExtremes();
+        var (c, o, _) = Run("info", full); Assert.Equal(0, c); Assert.Contains("READ-ONLY", o); Assert.Contains("section SystemData", o); Assert.Contains("sys.record.ending_cleared_flag", o); Assert.Contains("5 of 5 non-empty", o);
+        Assert.Contains("0 of 5 non-empty", Run("info", empty).outp);
+        var g = Run("get", full, "sys.record.ending_cleared_flag"); Assert.Equal(0, g.code); Assert.Equal(5, g.outp.Trim().Split('\n').Length); Assert.DoesNotContain("false", g.outp);
+        Assert.Equal("180438954", Run("get", full, "sys.record.shop_point").outp.Trim());
+        var (cs, _, e) = Run("set", full, "sys.record.shop_point", "5", "--out", Path.Combine(Path.GetTempPath(), "ff2r-nope"), "--allow-unverified"); Assert.Equal(2, cs); Assert.Contains("read-only", e); Assert.False(File.Exists(Path.Combine(Path.GetTempPath(), "ff2r-nope", "SAVEDATA.BIN")));
+        var (cd, od, _) = Run("diff", empty, full); Assert.Equal(0, cd); Assert.Contains("changes per known field:", od); Assert.Contains("[sys.record.ghost_list_unlock_data] 375 change(s)", od);
+        var all = Run("diff", empty, full, "--max", "100000").outp; Assert.Contains("ending_cleared_flag_/0  false -> true   [sys.record.ending_cleared_flag]", all); Assert.Contains("[sys.record.shop_point]", all);
+        Assert.Contains("sys.record.shop_point", Run("fields").outp); Assert.Contains("system", Run("fields").outp);
+    }
+}

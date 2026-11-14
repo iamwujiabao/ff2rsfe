@@ -35,7 +35,7 @@ public static class Program
             if (pos.Count == 0 || pos[0] is "help" or "-h" or "--help") { o.WriteLine(Usage); return pos.Count == 0 ? 2 : 0; }
             var cmd = pos[0]; var rest = pos.Skip(1).ToList();
             var schema = LoadSchema(opt);
-            if (cmd == "fields") { foreach (var f in schema.Fields) o.WriteLine($"{f.Id,-32} {f.Source,-6} {(f.Editable ? "rw" : "ro")} {f.Confidence,-9} {f.Name}"); return 0; }
+            if (cmd == "fields") { foreach (var f in schema.Fields) o.WriteLine($"{f.Id,-40} {f.Scope,-6} {f.Source,-6} {(f.Editable ? "rw" : "ro")} {f.Confidence,-9} {f.Name}"); return 0; }
             var cfg = CryptoConfig.Load(CryptoConfig.Find([Directory.GetCurrentDirectory(), AppContext.BaseDirectory], opt.GetValueOrDefault("config")));
             return cmd switch
             {
@@ -78,8 +78,10 @@ public static class Program
     static FieldSchema LoadSchema(Dictionary<string, string> opt)
     {
         var path = opt.GetValueOrDefault("fields") ?? FindUp("fields.json") ?? FindUp(Path.Combine("docs", "fields.json"));
-        if (path != null) return FieldSchema.Load(path);
-        var tmp = EmbeddedToTemp("fields.json"); try { return FieldSchema.Load(tmp); } finally { File.Delete(tmp); } // embedded default
+        var sysPath = opt.GetValueOrDefault("system-fields") ?? FindUp("system_fields.json") ?? FindUp(Path.Combine("docs", "system_fields.json"));
+        if (path != null) { var st = sysPath == null ? EmbeddedToTemp("system_fields.json") : null; try { return FieldSchema.Load(path, sysPath ?? st); } finally { if (st != null) File.Delete(st); } }
+        var tmp = EmbeddedToTemp("fields.json"); var stmp = sysPath == null ? EmbeddedToTemp("system_fields.json") : null;
+        try { return FieldSchema.Load(tmp, sysPath ?? stmp); } finally { File.Delete(tmp); if (stmp != null) File.Delete(stmp); } // embedded defaults
     }
 
     static ItemCatalog LoadItems(Dictionary<string, string> opt)
@@ -98,8 +100,17 @@ public static class Program
         o.WriteLine($"file        {path}\ntype        {(h.IsUser ? "user save (WLNUSR)" : "system save (WLNSYS)")}\nversion     0x{h.Version:X}\nuser id     {h.UserId} (0x{h.UserId:X})\nchapter     {h.Chapter}\nprogress    {h.Checkpoint}\nplay time   {h.PlayTime} (unit unverified; ~{TimeSpan.FromSeconds(h.PlayTime / 1e6):hh\\:mm\\:ss} if microseconds)\nsaved       {h.Timestamp.LocalDateTime:u}");
         o.WriteLine("integrity   " + (f.LoadProblems.Count == 0 ? "OK" : "PROBLEMS: " + string.Join("; ", f.LoadProblems)));
         if (dir) o.WriteLine("BACKUP.BIN  " + (!File.Exists(Path.Combine(target, "BACKUP.BIN")) ? "missing" : new SlotFolder(target, cfg).BackupIsIdentical() ? "identical" : "differs"));
-        if (h.IsUser) foreach (var d in s.Fields.Where(d => d.Source == "json" && !d.Collection && d.Confidence != "guessed" && d.Type is "int" or "bool"))
+        if (h.IsUser) foreach (var d in s.For(false).Where(d => d.Source == "json" && !d.Collection && d.Confidence != "guessed" && d.Type is "int" or "bool"))
             o.WriteLine($"{d.Id,-32} {f.GetText(d)}   [{d.Confidence}]");
+        else
+        {
+            o.WriteLine($"system save: READ-ONLY (every system field is an unverified guess); JSON {f.OriginalJsonLength:N0} bytes in a {f.OriginalPlaintext.Length:N0}-byte payload");
+            foreach (var sec in ((System.Text.Json.Nodes.JsonObject)f.Root)) o.WriteLine($"  section {sec.Key,-24} {SaveDiff.Flatten(sec.Value).Count,6:N0} values");
+            foreach (var d in s.For(true).Where(d => d.Source == "json" && (!d.Collection || d.Id.Contains("unlock") || d.Id.Contains("ending") || d.Id.Contains("played") || d.Id.Contains("bit_flag"))))
+            {
+                if (!d.Collection) o.WriteLine($"  {d.Id,-44} {f.GetText(d)}"); else { var (n, ne) = f.Summarize(d.Path); o.WriteLine($"  {d.Id,-44} {ne} of {n} non-empty"); }
+            }
+        }
         return f.LoadProblems.Count == 0 ? 0 : 1;
     }
 
@@ -156,7 +167,11 @@ public static class Program
             var mapped = d.Json.Where(e => e.FieldId != null).ToList(); var un = d.Json.Where(e => e.FieldId == null).ToList();
             o.WriteLine($"json: {d.Json.Count} changed value(s): {mapped.Count} mapped to a known field, {un.Count} unmapped; JSON size {d.JsonBytesA:N0} -> {d.JsonBytesB:N0} bytes");
             foreach (var e in mapped.Take(max)) o.WriteLine($"  {e.Location}  {e.Old ?? "<absent>"} -> {e.New ?? "<absent>"}   [{e.FieldId}]");
-            if (mapped.Count > max) o.WriteLine($"  ... {mapped.Count - max} more mapped (use --max)");
+            if (mapped.Count > max)
+            {
+                o.WriteLine($"  ... {mapped.Count - max} more mapped (use --max); changes per known field:");
+                foreach (var g in mapped.GroupBy(e => e.FieldId).OrderByDescending(g => g.Count()).ThenBy(g => g.Key).Take(60)) o.WriteLine($"      [{g.Key}] {g.Count()} change(s)");
+            }
             foreach (var e in un.Take(max)) o.WriteLine($"  {e.Location}  {e.Old ?? "<absent>"} -> {e.New ?? "<absent>"}   [unmapped]");
             if (un.Count > max) o.WriteLine($"  ... {un.Count - max} more unmapped (use --max); by area:");
             if (un.Count > max) foreach (var g in un.GroupBy(e => string.Join('/', e.Location.Split('/').Take(3))).OrderByDescending(g => g.Count()).Take(12)) o.WriteLine($"      {g.Count(),6}  {g.Key}");

@@ -26,7 +26,7 @@ public sealed class SaveFile
 
     SaveFile(CryptoConfig cfg, SaveHeader h, byte[] pt, long fileLen)
     {
-        this.cfg = cfg; Header = h; origHeader = (byte[])h.Raw.Clone(); plaintext = pt; OriginalPlaintext = (byte[])pt.Clone();
+        this.cfg = cfg; Header = h; origHeader = (byte[])h.Raw.Clone(); plaintext = pt; OriginalPlaintext = h.IsSystem ? pt : (byte[])pt.Clone(); // system saves are read-only: share the buffer (saves ~60 MB)
         LoadProblems = new IntegrityService(cfg).Verify(h, pt, fileLen);
         if (h.IsSystem == false && pt.Length < JsonAreaEnd) throw new SaveFormatException("Payload too short for a user save.");
         OriginalJsonLength = FindJsonLength(pt);
@@ -93,6 +93,7 @@ public sealed class SaveFile
     string Single(FieldDef f) { var p = Expand(f.Path).ToList(); return p.Count == 1 ? p[0] : throw new InvalidOperationException($"Field {f.Id} is a collection ({p.Count} matches); pass a concrete path."); }
     void CheckEditable(FieldDef f)
     {
+        if (Header.IsSystem || f.Scope == "system") throw new InvalidOperationException("System saves (SYSTEMSAVEDATA00) are read-only in this version: every system field is an unverified guess and writing them is not supported.");
         if (!f.Editable) throw new InvalidOperationException($"Field {f.Id} is read-only.");
         if (f.IsUnverified && !AllowUnverified) throw new InvalidOperationException($"Field {f.Id} is '{f.Confidence}' (unverified, never tested in the game) and locked. Turn on 'Allow editing unverified fields' (CLI: --allow-unverified) to edit it.");
     }
@@ -116,8 +117,8 @@ public sealed class SaveFile
     /// <summary>Current decrypted payload including pending JSON edits (header not included). Used by the hex diff view.</summary>
     public byte[] BuildPlaintext()
     {
+        if (!Dirty) return Header.IsSystem ? plaintext : (byte[])plaintext.Clone(); // system saves are never edited: no 60 MB copy
         var pt = (byte[])plaintext.Clone();
-        if (!Dirty) return pt;
         var json = Encoding.UTF8.GetBytes(Root.ToJsonString(Compact));
         if (JsonStart + json.Length > JsonAreaEnd && Header.IsUser) throw new SaveFormatException($"JSON grew to {json.Length} bytes; the area holds {JsonAreaEnd - JsonStart}.");
         int oldEnd = JsonStart + OriginalJsonLength, newEnd = JsonStart + json.Length;
@@ -134,6 +135,14 @@ public sealed class SaveFile
         SyncHeader();
         var h = new SaveHeader(Header.Raw); new IntegrityService(cfg).Fix(h, pt);
         return new SaveCodec(cfg).Encrypt(h, pt);
+    }
+
+    /// <summary>For a wildcard path: how many leaf values it matches and how many are non-empty (not 0 / false / null). Used for one-line summaries of long lists.</summary>
+    public (int Count, int NonEmpty) Summarize(string path)
+    {
+        int n = 0, ne = 0;
+        foreach (var p in Expand(path)) { n++; var v = Node(p); if (v is not null && !(v is JsonValue jv && (jv.TryGetValue<long>(out var l) && l == 0 || jv.TryGetValue<bool>(out var b) && !b))) ne++; }
+        return (n, ne);
     }
 
     /// <summary>JSON text of any node by path (generic read access for the CLI), or null.</summary>

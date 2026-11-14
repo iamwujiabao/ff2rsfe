@@ -23,7 +23,7 @@
             <StackPanel Margin="4" Spacing="2">
               <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15" />
               <TextBlock Text="{Binding Summary}" Classes="muted" TextWrapping="Wrap" />
-              <TextBlock Text="{Binding IntegrityText}" Classes.good="{Binding IntegrityOk}" Classes.bad="{Binding !IntegrityOk}" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding IntegrityText}" Classes.good="{Binding IntegrityGood}" Classes.bad="{Binding IntegrityBad}" TextWrapping="Wrap" />
               <TextBlock Text="{Binding BackupText}" Classes="muted" TextWrapping="Wrap" />
             </StackPanel>
           </DataTemplate>

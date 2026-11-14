@@ -16,10 +16,13 @@ public static class SaveLocator
         return Directory.Exists(root) ? Directory.GetDirectories(root).Where(d => Path.GetFileName(d).All(char.IsAsciiDigit) && Path.GetFileName(d).Length > 0).Order().ToList() : [];
     }
 
-    /// <summary>Slot dirs for a chosen folder: a user folder (contains SAVEDATAnn) or a single slot folder (contains SAVEDATA.BIN).</summary>
+    /// <summary>Slot dirs for a chosen folder: a user folder (contains SAVEDATAnn and SYSTEMSAVEDATAnn) or a single slot folder (contains SAVEDATA.BIN).</summary>
     public static IReadOnlyList<string> ResolveSlots(string folder)
     {
         if (File.Exists(Path.Combine(folder, "SAVEDATA.BIN"))) return [folder];
-        return Directory.Exists(folder) ? Directory.GetDirectories(folder, "SAVEDATA*").Where(d => File.Exists(Path.Combine(d, "SAVEDATA.BIN"))).Order().ToList() : [];
+        if (!Directory.Exists(folder)) return [];
+        bool Has(string d) => File.Exists(Path.Combine(d, "SAVEDATA.BIN"));
+        // user slots first, then the (read-only) system save folder(s)
+        return Directory.GetDirectories(folder, "SAVEDATA*").Where(Has).Order().Concat(Directory.GetDirectories(folder, "SYSTEMSAVEDATA*").Where(Has).Order()).ToList();
     }
 }

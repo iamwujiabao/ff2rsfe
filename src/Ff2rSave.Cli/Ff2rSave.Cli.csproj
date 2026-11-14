@@ -9,5 +9,6 @@
     <ProjectReference Include="..\Ff2rSave.Core\Ff2rSave.Core.csproj" />
     <EmbeddedResource Include="..\..\docs\fields.json" LogicalName="fields.json" />
     <EmbeddedResource Include="..\..\docs\items.json" LogicalName="items.json" />
+    <EmbeddedResource Include="..\..\docs\system_fields.json" LogicalName="system_fields.json" />
   </ItemGroup>
 </Project>

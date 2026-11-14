@@ -15,5 +15,6 @@
     <ProjectReference Include="..\Ff2rSave.Core\Ff2rSave.Core.csproj" />
     <None Include="..\..\docs\fields.json" Link="fields.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\docs\items.json" Link="items.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\docs\system_fields.json" Link="system_fields.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -26,24 +26,40 @@ public sealed class RelayCommand(Action<object?> run, Func<object?, bool>? can =
 public sealed class SlotVM(SlotFolder folder) : ObservableObject
 {
     public SlotFolder Folder { get; } = folder;
-    public string Name => Path.GetFileName(Folder.Directory);
+    public string Name => System.IO.Path.GetFileName(Folder.Directory);
+    public bool IsSystem => Name.StartsWith("SYSTEM", StringComparison.OrdinalIgnoreCase);
     public string Summary { get; private set; } = ""; public string IntegrityText { get; private set; } = ""; public string BackupText { get; private set; } = "";
-    public bool IntegrityOk { get; private set; }
+    public bool IntegrityOk { get; private set; } public bool IntegrityChecked { get; private set; }
+    public bool IntegrityGood => IntegrityChecked && IntegrityOk; public bool IntegrityBad => IntegrityChecked && !IntegrityOk;
 
     public void Refresh()
     {
         try
         {
+            if (IsSystem) { RefreshSystem(); return; }
             var f = Folder.OpenSave(); var h = f.Header;
             var t = TimeSpan.FromSeconds(h.PlayTime / 1_000_000.0); // unit (µs) is a guess: shown with "~"
             Summary = $"Chapter {h.Chapter} · progress {h.Checkpoint} · play time ~{(int)t.TotalHours}h{t.Minutes:D2}m\nSaved {h.Timestamp.LocalDateTime:g} · user ID {h.UserId}";
-            IntegrityOk = f.LoadProblems.Count == 0;
-            IntegrityText = IntegrityOk ? "Integrity: OK (checksums valid)" : "Integrity: " + string.Join("; ", f.LoadProblems);
+            SetIntegrity(f.LoadProblems);
             BackupText = Folder.HasBackup ? (Folder.BackupIsIdentical() ? "BACKUP.BIN: identical to SAVEDATA.BIN" : "BACKUP.BIN: differs (older generation?)") : "BACKUP.BIN: missing";
         }
-        catch (Exception ex) when (ex is SaveFormatException or IOException or UnauthorizedAccessException) { Summary = ""; IntegrityOk = false; IntegrityText = "Cannot read: " + ex.Message; BackupText = ""; }
-        Raise(nameof(Summary)); Raise(nameof(IntegrityText)); Raise(nameof(IntegrityOk)); Raise(nameof(BackupText));
+        catch (Exception ex) when (ex is SaveFormatException or IOException or UnauthorizedAccessException) { Summary = ""; IntegrityChecked = true; IntegrityOk = false; IntegrityText = "Cannot read: " + ex.Message; BackupText = ""; }
+        RaiseAll();
     }
+
+    /// <summary>The 61 MB system save is not decrypted just to draw the overview: only its 256-byte header is read; integrity is checked when it is opened.</summary>
+    void RefreshSystem()
+    {
+        var buf = new byte[SaveHeader.Size]; using (var fs = File.OpenRead(Folder.SavePath)) { fs.ReadExactly(buf); Summary = $"System save · READ-ONLY · {fs.Length / 1048576.0:N1} MB"; }
+        var h = new SaveHeader(buf); Summary += $"\nSaved {h.Timestamp.LocalDateTime:g}"; IntegrityChecked = false; IntegrityText = "Integrity: checked when opened"; BackupText = "";
+        RaiseAll();
+    }
+
+    public void SetIntegrity(IReadOnlyList<string> problems)
+    {
+        IntegrityChecked = true; IntegrityOk = problems.Count == 0; IntegrityText = IntegrityOk ? "Integrity: OK (checksums valid)" : "Integrity: " + string.Join("; ", problems); RaiseAll();
+    }
+    void RaiseAll() { Raise(nameof(Summary)); Raise(nameof(IntegrityText)); Raise(nameof(IntegrityOk)); Raise(nameof(IntegrityGood)); Raise(nameof(IntegrityBad)); Raise(nameof(BackupText)); }
 }
 
 /// <summary>One editable row (a schema field, or one concrete item of a collection field).</summary>
@@ -52,8 +68,8 @@ public sealed class FieldVM : ObservableObject
     readonly SaveFile file; readonly string? path; readonly Action changed; string text; string error = "";
     public FieldDef Def { get; }
     public string Label { get; }
-    public FieldVM(SaveFile f, FieldDef d, string? concretePath, string label, Action onChanged)
-    { file = f; Def = d; path = concretePath; Label = label; changed = onChanged; text = f.GetText(d, concretePath); }
+    public FieldVM(SaveFile f, FieldDef d, string? concretePath, string label, Action onChanged, string? displayText = null)
+    { file = f; Def = d; path = concretePath; Label = label; changed = onChanged; text = displayText ?? f.GetText(d, concretePath); }
 
     public string Value
     {
@@ -92,8 +108,8 @@ public sealed class HexRows(byte[] now, byte[] orig) : IList
         for (int k = 0; k < n; k++) { byte b = now[s + k]; cells[k] = new ByteCell(b.ToString("X2"), s + k >= orig.Length || orig[s + k] != b); asc[k] = b is >= 32 and < 127 ? (char)b : '.'; }
         return new HexRow(i, s.ToString("X8"), cells, new string(asc));
     }
-    public int FirstChangedRow() { for (int i = 0; i < Math.Min(now.Length, orig.Length); i++) if (now[i] != orig[i]) return i / 16; return -1; }
-    public int ChangedByteCount() { int c = 0; for (int i = 0; i < Math.Min(now.Length, orig.Length); i++) if (now[i] != orig[i]) c++; return c; }
+    public int FirstChangedRow() { if (ReferenceEquals(now, orig)) return -1; for (int i = 0; i < Math.Min(now.Length, orig.Length); i++) if (now[i] != orig[i]) return i / 16; return -1; }
+    public int ChangedByteCount() { if (ReferenceEquals(now, orig)) return 0; int c = 0; for (int i = 0; i < Math.Min(now.Length, orig.Length); i++) if (now[i] != orig[i]) c++; return c; }
     public IEnumerator GetEnumerator() { for (int i = 0; i < Count; i++) yield return Row(i); }
     public int IndexOf(object? v) => v is HexRow r ? r.Index : -1; public bool Contains(object? v) => v is HexRow;
     public bool IsReadOnly => true; public bool IsFixedSize => true; public bool IsSynchronized => false; public object SyncRoot => this;
@@ -165,7 +181,8 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             cfg = CryptoConfig.Load(CryptoConfig.Find([AppContext.BaseDirectory, Directory.GetCurrentDirectory()], configPath));
-            schema = FieldSchema.Load(Path.Combine(AppContext.BaseDirectory, "fields.json"));
+            var sysFields = Path.Combine(AppContext.BaseDirectory, "system_fields.json");
+            schema = FieldSchema.Load(Path.Combine(AppContext.BaseDirectory, "fields.json"), File.Exists(sysFields) ? sysFields : null);
             items = ItemCatalog.Load(Path.Combine(AppContext.BaseDirectory, "items.json")); // optional: unknown items just show their hash key
             Status = "Ready. Use “Open folder…” (a Savedata\\<id> folder or a single slot folder)." + (IsWindows ? " “Find default location” checks the standard Windows folder." : "");
         }
@@ -213,11 +230,13 @@ public sealed class MainViewModel : ObservableObject
         {
             try
             {
-                file = selected.Folder.OpenSave(); file.AllowUnverified = allowUnverified;
-                foreach (var d in schema.Fields)
+                file = selected.Folder.OpenSave(); file.AllowUnverified = allowUnverified; selected.SetIntegrity(file.LoadProblems);
+                bool system = file.Header.IsSystem;
+                foreach (var d in schema.For(system))
                 {
                     if (d.Source == "json" && (d.Collection || d.Path.Contains('*')))
                     {
+                        if (system) { var (n, ne) = file.Summarize(d.Path); Fields.Add(new FieldVM(file, d, null, d.Name, OnChanged, $"{ne} of {n} non-empty")); continue; } // one summary row per list
                         if (!d.Editable) continue; // informational collections (item key, key_num, ...) are shown in each item row's label / via the CLI, not as ~650 extra rows each
                         foreach (var p in file.Expand(d.Path))
                         {
@@ -229,7 +248,7 @@ public sealed class MainViewModel : ObservableObject
                     }
                     else Fields.Add(new FieldVM(file, d, null, d.Name, OnChanged));
                 }
-                Status = $"{selected.Name}: {Fields.Count} fields. " + (file.LoadProblems.Count == 0 ? "Integrity OK." : "Integrity problems: " + string.Join("; ", file.LoadProblems));
+                Status = $"{selected.Name}: {Fields.Count} {(system ? "read-only system fields (all unverified guesses; nothing here can be saved). " : "fields. ")}" + (file.LoadProblems.Count == 0 ? "Integrity OK." : "Integrity problems: " + string.Join("; ", file.LoadProblems));
             }
             catch (Exception ex) when (ex is SaveFormatException or IOException) { Status = $"Cannot open {selected.Name}: {ex.Message}"; }
         }

@@ -38,7 +38,7 @@ Function at exe rva 0xc14ea0, custom 32-byte keyed checksum, reimplemented in `t
 state S[32]=0; for each byte `b` at index `i`: add `b` (mod 2^16, little-endian lanes) to lane at S[0], S[2+2*((i>>2)&1)], S[6+2*(i&3)]; then for k in 0..30: `S[k+1] += S[k] + 2k (mod 256)`; output[j] = `(A[S[j]] + B[j]) mod 256` with A (256 B) and B (32 B) immediates in the function (extracted at runtime). Hash order on write: payload first (0x50), then header (0x70).
 
 ## Plaintext layout [C]
-`[0:8]` version qword 0x24121300, `[8:16]` zero, `[16 : 16+n]` compact JSON (`separators=(",",":")`, UTF-8, byte-identical re-serialization verified), zero padding up to plaintext offset 0xFA010 (JSON area = 1,024,000 B; samples use 0.778-0.801 MB of it (42 unique user saves)), then a binary tail (~8.3 MB, changes heavily between saves; likely photo data referenced by `PHOTO_SLOT`) [G]. System save: same prefix, JSON about 0.42 MB, then binary.
+`[0:8]` version qword 0x24121300, `[8:16]` zero, `[16 : 16+n]` compact JSON (`separators=(",",":")`, UTF-8, byte-identical re-serialization verified), zero padding up to plaintext offset 0xFA010 (JSON area = 1,024,000 B; samples use 0.778-0.801 MB of it (42 unique user saves)), then a binary tail (~8.3 MB, changes heavily between saves; likely photo data referenced by `PHOTO_SLOT`) [G]. System save: same 16-byte prefix, JSON 0.39-0.42 MB, then padding and binary data (see the system-save section).
 Editing rule: parse JSON, change values, re-serialize compactly, zero-pad to the same area, leave the tail untouched, then recompute 0x50 and 0x70.
 
 ## JSON sections (user save)
@@ -50,3 +50,10 @@ Loader compares header 0x10 with the current user's id (obj+0xb0); mismatch -> e
 
 ## SAVEDATA.BIN vs BACKUP.BIN [G]
 Either identical or BACKUP is an older generation of the same slot (e.g. mine/SAVEDATA00: progress 9015 vs 9030). The write order is not determined. Editor policy until tested: an in-place save writes only `SAVEDATA.BIN` and leaves `BACKUP.BIN` (the older generation, a state the game itself produces) untouched as the way back; writing both is an explicit option (`--both`). Whether the game prefers one file, or compares them, is still unknown (see experiment 4).
+
+## System save (SYSTEMSAVEDATA00) - read-only
+Observed in 6 unique system saves of other players (uncontrolled); details and per-save tables in `docs/system_observations.md`.
+- **Known [C for the container, nothing else]:** magic `WLNSYS`, 61,851,984 bytes, same AES-128-CBC key/IV and the same two checksums as user saves (6/6 unique files verify and round-trip byte-exactly). All game-state header fields are 0. The JSON (0.39-0.42 MB) has 5 sections (`SystemData`, `SystemUiData`, `SystemPlayerRecordData`, `PHOTO_SYSTEM`, `PHOTO_GHOST_LIST`), 21,853 leaf values (ints and bools), identical paths in every save. It holds no user ID.
+- **Guessed [G]:** `docs/system_fields.json` (108 field patterns, all `guessed`, all read-only): settings, unlock lists (zero-padded lists of hashed ids in unlock order: compare as sets), ending flags, bit masks, shop points, played-scene lists, photo metadata.
+- **Unknown:** what the hashed ids are, what the binary data after the JSON is (0 to 41 MB of non-zero bytes; first non-zero at plaintext offset 1,024,016 or 17,613,392), what `shop_point_` counts, `record_save_data`, and whether the game accepts an edited system save. **The tools never edit or write system saves** (Core refuses; CLI `set`/export and the app's save/export are blocked).
+- Cost: loading takes about 0.1 s and 256 MB of memory (a user save: 97 MB); no special loading scheme is needed.

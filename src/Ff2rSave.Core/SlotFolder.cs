@@ -23,11 +23,14 @@ public sealed class SlotFolder(string directory, CryptoConfig cfg)
     /// <summary>True when BACKUP.BIN exists and is byte-identical to SAVEDATA.BIN.</summary>
     public bool BackupIsIdentical() => HasBackup && File.ReadAllBytes(SavePath).AsSpan().SequenceEqual(File.ReadAllBytes(BackupPath));
 
+    static void RefuseSystem(SaveFile f) { if (f.Header.IsSystem) throw new SaveFormatException("System saves (SYSTEMSAVEDATA00) are read-only in this version: nothing is written."); }
+
     IReadOnlyList<string> Check(byte[] raw) => SaveFile.FromBytes(raw, cfg).LoadProblems;
 
     /// <summary>OVERWRITES the original (atomically, with a timestamped .bak-* backup of each replaced file and read-back verification). Returns backup paths.</summary>
     public IReadOnlyList<string> Save(SaveFile file, BackupFilePolicy policy = BackupFilePolicy.PrimaryOnly)
     {
+        RefuseSystem(file);
         var data = file.ToBytes(); var made = new List<string>();
         var targets = policy == BackupFilePolicy.Both ? new[] { SavePath, BackupPath } : new[] { SavePath };
         foreach (var p in targets) if (AtomicFile.WriteVerified(p, data, Check) is { } b) made.Add(b);
@@ -37,6 +40,7 @@ public sealed class SlotFolder(string directory, CryptoConfig cfg)
     /// <summary>Writes the edited save into destSlotDir WITHOUT touching this slot. BACKUP.BIN is copied unchanged so the copy is a complete slot. Returns the written SAVEDATA.BIN path.</summary>
     public string Export(SaveFile file, string destSlotDir)
     {
+        RefuseSystem(file);
         var src = Path.GetFullPath(Directory).TrimEnd(Path.DirectorySeparatorChar); var dst = Path.GetFullPath(destSlotDir).TrimEnd(Path.DirectorySeparatorChar);
         var cmp = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         if (string.Equals(src, dst, cmp) || dst.StartsWith(src + Path.DirectorySeparatorChar, cmp)) throw new SaveFormatException("The export folder must be different from the original slot folder (and not inside it).");

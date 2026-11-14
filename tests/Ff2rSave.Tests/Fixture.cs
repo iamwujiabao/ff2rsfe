@@ -17,6 +17,16 @@ public static class Fixture
         throw new InvalidOperationException("repo root not found");
     }
     public static IEnumerable<string> AllBins() => Directory.Exists(Samples) ? Directory.GetFiles(Samples, "*.BIN", SearchOption.AllDirectories).Where(f => !f.Contains("__MACOSX") && !Path.GetFileName(f).StartsWith("._")).Order() : [];
+    public static string SystemFields => Path.Combine(Root, "docs", "system_fields.json");
+    public static FieldSchema SchemaWithSystem => FieldSchema.Load(Path.Combine(Root, "docs", "fields.json"), SystemFields);
+    public static IEnumerable<string> SystemBins() => AllBins().Where(f => Path.GetFileName(Path.GetDirectoryName(f))!.StartsWith("SYSTEMSAVEDATA"));
+    /// <summary>System samples picked by content (not by uploader names): the one with all five ending flags set, and the one with none.</summary>
+    public static (string full, string empty) SystemExtremes()
+    {
+        var s = SchemaWithSystem; var d = s["sys.record.ending_cleared_flag"]; string? full = null, empty = null;
+        foreach (var f in SystemBins()) { var n = SaveFile.Open(f, Cfg).Summarize(d.Path).NonEmpty; if (n == 5) full ??= f; if (n == 0) empty ??= f; }
+        return (full!, empty!);
+    }
     public static string Mine(string slot, string file = "SAVEDATA.BIN") => Path.Combine(Samples, "mine", slot, file);
 
     public static string TempSlotFrom(string slotDir)

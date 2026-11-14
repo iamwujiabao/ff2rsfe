@@ -62,6 +62,6 @@ scripts/publish-app.sh              # app  -> dist-app/Ff2rSaveEditor.exe (ship 
 Equivalent: `dotnet publish src/Ff2rSave.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true`.
 
 ## Known limits
-Item/costume IDs are hashes with no name table yet; no adding of new items; system saves can be read/verified but have no field map;
+Item/costume IDs are hashes with no name table yet; no adding of new items; system saves can be read, verified and inspected through a guessed, read-only field map (`docs/system_fields.json`) but are never edited or written;
 the `SAVEDATA.BIN`/`BACKUP.BIN` write order and many field meanings are unverified. Format details: `docs/save_format.md`;
 suggested experiments to close the gaps: `docs/experiments.md`.

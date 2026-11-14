@@ -30,9 +30,9 @@ public class UiTests
         return t;
     }
 
-    static (MainWindow w, MainViewModel vm, string dir) Open(ThemeVariant? theme = null)
+    static (MainWindow w, MainViewModel vm, string dir) Open(ThemeVariant? theme = null, string? existingDir = null)
     {
-        var dir = TempUserDir(); var w = new MainWindow(); var vm = (MainViewModel)w.DataContext!;
+        var dir = existingDir ?? TempUserDir(); var w = new MainWindow(); var vm = (MainViewModel)w.DataContext!;
         if (theme != null) w.RequestedThemeVariant = theme;
         w.Show(); vm.OpenPath(dir); Dispatcher.UIThread.RunJobs(); return (w, vm, dir);
     }
@@ -96,6 +96,28 @@ public class UiTests
             w.FindControl<TabControl>("Tabs")!.SelectedIndex = 1; Dispatcher.UIThread.RunJobs();
             Assert.NotNull(vm.HexRows); Assert.True(vm.HexRows!.ChangedByteCount() > 0); Assert.True(vm.HexRows.FirstChangedRow() >= 0);
             vm.GoToChangeCommand.Execute(null); Shot(w, "hex-light.png");
+        }
+        finally { w.Close(); Directory.Delete(dir, true); }
+    }
+
+    [AvaloniaFact]
+    public async Task System_save_is_listed_last_opens_read_only_with_summary_rows_and_cannot_be_saved()
+    {
+        var src = Directory.GetFiles(Path.Combine(Root, "samples"), "SAVEDATA.BIN", SearchOption.AllDirectories).First(f => new FileInfo(f).Length == 61851984 && Path.GetFileName(Path.GetDirectoryName(f))!.StartsWith("SYSTEMSAVEDATA"));
+        var dir = TempUserDir(); Directory.CreateDirectory(Path.Combine(dir, "SYSTEMSAVEDATA00")); File.Copy(src, Path.Combine(dir, "SYSTEMSAVEDATA00", "SAVEDATA.BIN"));
+        var (w, vm, _) = Open(ThemeVariant.Light, dir);
+        try
+        {
+            Assert.Equal(3, vm.Slots.Count); var sys = vm.Slots[^1]; Assert.True(sys.IsSystem); Assert.Equal("SYSTEMSAVEDATA00", sys.Name);
+            Assert.False(sys.IntegrityChecked); Assert.Contains("READ-ONLY", sys.Summary); Assert.Contains("checked when opened", sys.IntegrityText); // header-only overview: no 61 MB decrypt yet
+            var sw = System.Diagnostics.Stopwatch.StartNew(); vm.SelectedSlot = sys; Dispatcher.UIThread.RunJobs(); sw.Stop();
+            Assert.True(sys.IntegrityChecked && sys.IntegrityGood, sys.IntegrityText); Assert.Contains("read-only system fields", vm.Status);
+            Assert.InRange(vm.Fields.Count, 20, 200); Assert.All(vm.Fields, f => Assert.Equal("read-only", f.StatusText)); Assert.Contains(vm.Fields, f => f.Value.Contains("non-empty"));
+            var first = vm.Fields[0]; var v = first.Value; first.Value = "999"; Assert.Equal(v, first.Value);
+            Assert.False(vm.SaveCommand.CanExecute(null)); vm.RefreshHexCommand.Execute(null); Assert.Contains("0 changed", vm.HexInfo); Assert.True(vm.HexRows!.Count > 3_000_000);
+            Assert.True(sw.Elapsed.TotalSeconds < 10, $"opening the 61 MB system save took {sw.Elapsed.TotalSeconds:N1}s");
+            Shot(w, "system-readonly.png");
+            vm.SelectedSlot = vm.Slots[0]; Dispatcher.UIThread.RunJobs(); Assert.Contains(vm.Fields, f => f.Def.Id == "mission.progress"); // back to a user slot
         }
         finally { w.Close(); Directory.Delete(dir, true); }
     }

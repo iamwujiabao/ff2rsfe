@@ -189,6 +189,73 @@ public class AppliedProposalsTests
     }
 }
 
+public class SystemSaveTests
+{
+    [Fact]
+    public void System_fields_are_all_guessed_read_only_unique_and_resolve_in_every_system_sample()
+    {
+        var s = Fixture.SchemaWithSystem; var sys = s.For(true).ToList();
+        Assert.Equal(108, sys.Count); Assert.All(sys, d => { Assert.Equal("system", d.Scope); Assert.Equal("guessed", d.Confidence); Assert.False(d.Editable); Assert.StartsWith("sys.", d.Id); });
+        Assert.DoesNotContain(s.For(false), d => d.Id.StartsWith("sys.")); Assert.Equal(s.Fields.Count, s.Fields.Select(f => f.Id).Distinct().Count());
+        var files = Fixture.SystemBins().ToList(); Assert.True(files.Count >= 6);
+        foreach (var path in files) { var f = SaveFile.Open(path, Fixture.Cfg); Assert.Empty(f.LoadProblems); foreach (var d in sys) Assert.NotEmpty(f.Expand(d.Path)); }
+    }
+
+    [Fact]
+    public void Duplicate_ids_across_the_field_files_are_rejected()
+    {
+        var tmp = Path.GetTempFileName();
+        try { File.WriteAllText(tmp, "{\"fields\":[{\"id\":\"hdr.user_id\",\"path\":\"/x\"}]}"); Assert.Throws<SaveFormatException>(() => FieldSchema.Load(Path.Combine(Fixture.Root, "docs", "fields.json"), tmp)); }
+        finally { File.Delete(tmp); }
+    }
+
+    [Fact]
+    public void System_saves_refuse_every_edit_even_with_unverified_unlocked_and_round_trip_unchanged_without_a_second_copy()
+    {
+        var (full, empty) = Fixture.SystemExtremes(); var s = Fixture.SchemaWithSystem; var f = SaveFile.Open(full, Fixture.Cfg); f.AllowUnverified = true;
+        var ex = Assert.Throws<InvalidOperationException>(() => f.SetInt(s["sys.record.shop_point"], 1)); Assert.Contains("read-only", ex.Message);
+        Assert.Throws<InvalidOperationException>(() => f.SetText(s["sys.record.ending_cleared_flag"], "false", "/SystemPlayerRecordData/ending_cleared_flag_/0"));
+        Assert.Throws<InvalidOperationException>(() => f.SetInt(s["hdr.user_id"], 5)); // header fields too
+        Assert.False(f.HasChanges); Assert.Same(f.OriginalPlaintext, f.BuildPlaintext()); // memory: no 60 MB copy
+        Assert.True(f.ToBytes().AsSpan().SequenceEqual(File.ReadAllBytes(full)));
+        Assert.Equal((5, 5), f.Summarize(s["sys.record.ending_cleared_flag"].Path)); Assert.Equal((5, 0), SaveFile.Open(empty, Fixture.Cfg).Summarize(s["sys.record.ending_cleared_flag"].Path));
+    }
+
+    [Fact]
+    public void Saving_or_exporting_a_system_slot_is_refused_and_writes_nothing()
+    {
+        var (full, _) = Fixture.SystemExtremes(); var dir = Fixture.TempSlotFrom(Path.GetDirectoryName(full)!);
+        try
+        {
+            var slot = new SlotFolder(dir, Fixture.Cfg); var f = slot.OpenSave(); var before = File.ReadAllBytes(slot.SavePath); var names = Directory.GetFiles(dir).Select(Path.GetFileName).Order().ToList();
+            Assert.Throws<SaveFormatException>(() => slot.Save(f)); Assert.Throws<SaveFormatException>(() => slot.Export(f, dir + "-copy"));
+            Assert.True(File.ReadAllBytes(slot.SavePath).AsSpan().SequenceEqual(before)); Assert.Equal(names, Directory.GetFiles(dir).Select(Path.GetFileName).Order().ToList()); Assert.False(Directory.Exists(dir + "-copy"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void Diff_of_two_system_saves_maps_changes_to_system_field_ids()
+    {
+        var (full, empty) = Fixture.SystemExtremes(); var s = Fixture.SchemaWithSystem;
+        var d = SaveDiff.Compare(SaveFile.Open(empty, Fixture.Cfg), SaveFile.Open(full, Fixture.Cfg), s);
+        Assert.Contains(d.Json, e => e.FieldId == "sys.record.ending_cleared_flag" && e.Old == "false" && e.New == "true"); Assert.Contains(d.Json, e => e.FieldId == "sys.record.shop_point");
+        Assert.All(d.Json.Where(e => e.FieldId != null), e => Assert.StartsWith("sys.", e.FieldId));
+    }
+
+    [Fact]
+    public void Locator_lists_the_system_folder_after_the_user_slots()
+    {
+        var t = Path.Combine(Path.GetTempPath(), "ff2r-sysloc-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            foreach (var n in new[] { "SYSTEMSAVEDATA00", "SAVEDATA01", "SAVEDATA00" }) { Directory.CreateDirectory(Path.Combine(t, n)); File.WriteAllBytes(Path.Combine(t, n, "SAVEDATA.BIN"), [1]); }
+            Assert.Equal(["SAVEDATA00", "SAVEDATA01", "SYSTEMSAVEDATA00"], SaveLocator.ResolveSlots(t).Select(Path.GetFileName).ToArray());
+        }
+        finally { Directory.Delete(t, true); }
+    }
+}
+
 public class SlotAndBackupTests
 {
     static string TempSlot() => Fixture.TempSlotFrom(Path.GetDirectoryName(Fixture.Mine("SAVEDATA00"))!);
