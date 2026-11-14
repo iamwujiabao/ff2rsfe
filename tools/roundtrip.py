@@ -10,7 +10,7 @@ for p in sorted(glob.glob("samples/*/*/*.BIN")):
     ok+=same; bad+=not same
     print(f"  {'PASS' if same else 'FAIL'} {'SYS ' if 'SYSTEM' in p else 'USER'} {p[8:]}  loader-problems={F.verify(raw,cfg) or 'none'} {diff}")
 print("pass",ok,"fail",bad)
-for p in ["samples/mine/SAVEDATA00/SAVEDATA.BIN","samples/mine/SAVEDATA00/BACKUP.BIN","samples/source-A/SYSTEMSAVEDATA00/SAVEDATA.BIN"]:
+for p in ["samples/mine/SAVEDATA00/SAVEDATA.BIN","samples/mine/SAVEDATA00/BACKUP.BIN"] + sorted(glob.glob("samples/*/SYSTEMSAVEDATA00/SAVEDATA.BIN"))[:1]:
     raw=open(p,"rb").read(); hdr,pt=F.decrypt(raw,cfg); body=pt[16:]; end=len(body.rstrip(b"\0"))
     try: j=json.loads(body[:end].decode("utf-8")); ks=list(j.keys()) if isinstance(j,dict) else type(j)
     except Exception as e: ks=f"JSON parse failed: {e}"

@@ -42,19 +42,22 @@ public class RoundTripAndParity
         }
     }
 
-    [Fact] // golden.json is produced by tools/make_golden.py (Python implementation)
+    [Fact] // golden.json is produced by tools/make_golden.py (Python implementation) and keyed by each file's SHA-256: no paths or names
     public void Csharp_matches_python_decryption_and_checksums()
     {
         var gold = JsonDocument.Parse(File.ReadAllText(Path.Combine(Fixture.Root, "tests", "golden.json"))).RootElement;
-        var cfg = Fixture.Cfg; var codec = new SaveCodec(cfg); var integ = new IntegrityService(cfg); int n = 0;
-        foreach (var g in gold.EnumerateObject())
+        var cfg = Fixture.Cfg; var codec = new SaveCodec(cfg); var integ = new IntegrityService(cfg); int matched = 0; var seen = new HashSet<string>();
+        foreach (var path in Fixture.AllBins())
         {
-            var raw = File.ReadAllBytes(Path.Combine(Fixture.Samples, g.Name)); var (h, pt) = codec.Decrypt(raw);
-            Assert.Equal(g.Value.GetProperty("plaintext_sha256").GetString(), Convert.ToHexString(SHA256.HashData(pt)).ToLowerInvariant());
-            Assert.Equal(g.Value.GetProperty("chk_payload").GetString(), Convert.ToHexString(integ.Chk32(pt)).ToLowerInvariant());
-            Assert.Equal(g.Value.GetProperty("header_chk").GetString(), Convert.ToHexString(h.Raw.AsSpan(0x70, 32)).ToLowerInvariant()); n++;
+            var raw = File.ReadAllBytes(path); var key = Convert.ToHexString(SHA256.HashData(raw)).ToLowerInvariant();
+            if (!seen.Add(key) || !gold.TryGetProperty(key, out var g)) continue;
+            var (h, pt) = codec.Decrypt(raw);
+            Assert.Equal(g.GetProperty("size").GetInt32(), raw.Length);
+            Assert.Equal(g.GetProperty("plaintext_sha256").GetString(), Convert.ToHexString(SHA256.HashData(pt)).ToLowerInvariant());
+            Assert.Equal(g.GetProperty("chk_payload").GetString(), Convert.ToHexString(integ.Chk32(pt)).ToLowerInvariant());
+            Assert.Equal(g.GetProperty("header_chk").GetString(), Convert.ToHexString(h.Raw.AsSpan(0x70, 32)).ToLowerInvariant()); matched++;
         }
-        Assert.Equal(14, n);
+        Assert.True(matched >= 14, $"only {matched} sample files matched golden.json; regenerate it with tools/make_golden.py");
     }
 }
 

@@ -17,7 +17,7 @@ public class CliTests
     [Fact] public void Info_reports_integrity_ok_and_fields()
     {
         var (c, o, _) = Run("info", Fixture.Mine("SAVEDATA00")); Assert.Equal(0, c);
-        Assert.Contains("integrity   OK", o); Assert.Contains("1000000000", o); Assert.Contains("mission.progress", o);
+        Assert.Contains("integrity   OK", o); Assert.Contains(SaveFile.Open(Fixture.Mine("SAVEDATA00"), Fixture.Cfg).Header.UserId.ToString(), o); // the id comes from the file, never hard-coded Assert.Contains("mission.progress", o);
     }
 
     [Fact] public void Verify_ok_for_all_samples_and_fails_for_corrupt()

@@ -7,7 +7,7 @@ Samples: 12 user saves (3 mine, 2 NG+, 1 100%; SAVEDATA+BACKUP) and 2 system sav
 ## Files and folders
 `%LOCALAPPDATA%\KoeiTecmo\FatalFrameII\Savedata\<id>\SAVEDATA00..nn\{SAVEDATA.BIN,BACKUP.BIN}` and `SYSTEMSAVEDATA00\SAVEDATA.BIN`.
 Path format in the exe: `%s\%d\%s\%s` (root, user id as signed int32, slot dir, file) [C]. `<id>` = header 0x10 of the saves bound to that user [C].
-Whether `<id>` is the Steam AccountID is [G] (value 1000000000 for my saves fits; the origin of the field was not traced).
+Whether `<id>` is the Steam AccountID is [G] (the value in my own saves is a 10-digit number, which fits; the origin of the field was not traced).
 
 ## Container [C]
 | Off | Size | Meaning |
