@@ -1,0 +1,5 @@
+{
+  "schema": 1,
+  "note": "Hash key -> item name. Only add entries backed by evidence (see docs/experiment_log.md). source = how it was learned, confidence = confirmed|likely|guessed. Starts empty on purpose.",
+  "items": []
+}

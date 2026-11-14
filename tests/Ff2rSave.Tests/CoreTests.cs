@@ -283,3 +283,76 @@ public class SafetyPolicyTests
         finally { Directory.Delete(dir, true); }
     }
 }
+
+public class DiffAndItemsTests
+{
+    static SaveFile Mine(string slot, string file = "SAVEDATA.BIN") => SaveFile.Open(Fixture.Mine(slot, file), Fixture.Cfg);
+
+    [Fact]
+    public void Identical_saves_have_an_empty_diff()
+    {
+        var d = SaveDiff.Compare(Mine("SAVEDATA00"), Mine("SAVEDATA00"), Fixture.Schema);
+        Assert.Empty(d.Header); Assert.Empty(d.Json); Assert.Equal(0, d.TailChangedBytes);
+    }
+
+    [Fact]
+    public void A_two_field_edit_shows_up_as_exactly_those_two_mapped_changes()
+    {
+        var a = Mine("SAVEDATA00"); var b = Mine("SAVEDATA00"); b.AllowUnverified = true; var s = Fixture.Schema;
+        b.SetInt(s["player.senki"], 111); b.SetInt(s["player.sen"], 111);
+        var d = SaveDiff.Compare(a, SaveFile.FromBytes(b.ToBytes(), Fixture.Cfg), s);
+        Assert.Empty(d.Header); Assert.Equal(0, d.TailChangedBytes);
+        Assert.Equal(["player.sen", "player.senki"], d.Json.Select(e => e.FieldId!).Order().ToArray());
+        Assert.All(d.Json, e => { Assert.Equal("5865", e.Old); Assert.Equal("111", e.New); });
+    }
+
+    [Fact]
+    public void Progress_edit_maps_header_copies_and_json_value()
+    {
+        var a = Mine("SAVEDATA00"); var b = Mine("SAVEDATA00"); var s = Fixture.Schema; b.SetInt(s["mission.progress"], 9036);
+        var d = SaveDiff.Compare(a, SaveFile.FromBytes(b.ToBytes(), Fixture.Cfg), s);
+        Assert.Equal(["hdr.checkpoint"], d.Header.Select(e => e.FieldId!).ToArray()); // chapter stays 9 (9030 -> 9036)
+        Assert.Equal(["mission.progress"], d.Json.Select(e => e.FieldId!).ToArray());
+    }
+
+    [Fact]
+    public void Save_vs_older_backup_maps_known_fields_and_reports_unmapped_and_tail()
+    {
+        var s = Fixture.Schema; var d = SaveDiff.Compare(Mine("SAVEDATA00", "BACKUP.BIN"), Mine("SAVEDATA00"), s);
+        Assert.Contains(d.Header, e => e.FieldId == "hdr.checkpoint" && e.Old == "9015" && e.New == "9030");
+        Assert.Contains(d.Json, e => e.FieldId == "mission.progress" && e.Old == "9015" && e.New == "9030");
+        Assert.NotEmpty(d.Unmapped); Assert.True(d.TailChangedBytes > 0 && d.TailRanges > 0);
+    }
+
+    [Fact]
+    public void Paths_outside_fields_json_are_reported_unmapped_and_added_or_removed_paths_show_absent()
+    {
+        var a = Mine("SAVEDATA00"); var b = Mine("SAVEDATA00");
+        b.Root["UIData"]!["projector_set_film_item_label_"] = 42; b.Root["UIData"]!["brand_new_key"] = true;
+        var d = SaveDiff.Compare(a, b, Fixture.Schema);
+        Assert.Contains(d.Json, e => e.Location == "/UIData/projector_set_film_item_label_" && e.FieldId == null && e.New == "42");
+        Assert.Contains(d.Json, e => e.Location == "/UIData/brand_new_key" && e.Old == null && e.New == "true" && e.FieldId == null);
+    }
+
+    [Fact]
+    public void Item_listing_skips_empty_slots_and_resolves_names_from_the_catalog()
+    {
+        var f = Mine("SAVEDATA00"); var rows = ItemListing.Rows(f, ItemCatalog.Empty);
+        Assert.Equal(166, rows.Count); Assert.Equal(185346688, rows[0].Key); Assert.All(rows, r => Assert.True(r.Key != 0 || r.Num != 0)); Assert.All(rows, r => Assert.Null(r.Name));
+        Assert.Equal(1200, ItemListing.Rows(f, ItemCatalog.Empty, all: true).Count);
+        var tmp = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(tmp, "{\"schema\":1,\"items\":[{\"key\":185346688,\"name\":\"Test item\",\"source\":\"unit test\",\"confidence\":\"guessed\"}]}");
+            var named = ItemListing.Rows(f, ItemCatalog.Load(tmp)); Assert.Equal("Test item", named[0].Name); Assert.Equal("guessed", named[0].NameConfidence); Assert.Single(named, r => r.Name != null);
+            File.WriteAllText(tmp, "{\"items\":[{\"name\":\"no key\"}]}");
+            Assert.Throws<SaveFormatException>(() => ItemCatalog.Load(tmp));
+            File.WriteAllText(tmp, "{ broken"); Assert.Throws<SaveFormatException>(() => ItemCatalog.Load(tmp));
+            File.WriteAllText(tmp, "{\"items\":[{\"key\":0,\"name\":\"zero\"}]}"); Assert.Throws<SaveFormatException>(() => ItemCatalog.Load(tmp));
+            File.WriteAllText(tmp, "{\"items\":[{\"key\":5,\"name\":\"a\"},{\"key\":5,\"name\":\"b\"}]}"); Assert.Throws<SaveFormatException>(() => ItemCatalog.Load(tmp)); // duplicate key
+        }
+        finally { File.Delete(tmp); }
+        Assert.Equal(0, ItemCatalog.Load("/nonexistent/items.json").Count); // missing file is fine
+        ItemCatalog.Load(Path.Combine(Fixture.Root, "docs", "items.json")); // the shipped file parses
+    }
+}

@@ -118,3 +118,54 @@ public class CliTests
         Assert.Equal(2, Program.Run([], o, er));
     }
 }
+
+public class CliDiffItemsTests
+{
+    static (int code, string outp, string err) Run(params string[] a)
+    {
+        var o = new StringWriter(); var e = new StringWriter();
+        var code = Program.Run([.. a, "--config", Path.Combine(Fixture.Root, "local_config.json"), "--fields", Path.Combine(Fixture.Root, "docs", "fields.json"), "--items", Path.Combine(Fixture.Root, "docs", "items.json")], o, e); return (code, o.ToString(), e.ToString());
+    }
+    static string Slot() => Path.GetDirectoryName(Fixture.Mine("SAVEDATA00"))!;
+
+    [Fact] public void Diff_of_save_vs_backup_lists_mapped_ids_unmapped_summary_and_tail()
+    {
+        var (c, o, e) = Run("diff", Fixture.Mine("SAVEDATA00", "BACKUP.BIN"), Fixture.Mine("SAVEDATA00"), "--max", "2"); Assert.True(c == 0, e);
+        Assert.Contains("[hdr.checkpoint]", o); Assert.Contains("[mission.progress]", o); Assert.Contains("9015 -> 9030", o); Assert.Contains("[unmapped]", o);
+        Assert.Contains("more unmapped", o); Assert.Contains("by area:", o); Assert.Contains("binary tail:", o); Assert.Contains("derived", o);
+    }
+
+    [Fact] public void Diff_of_slot_dirs_compares_both_files_and_says_identical_when_equal()
+    {
+        var (c, o, _) = Run("diff", Slot(), Slot()); Assert.Equal(0, c); Assert.Equal(2, o.Split("IDENTICAL").Length - 1); Assert.Contains("SAVEDATA.BIN", o); Assert.Contains("BACKUP.BIN", o);
+    }
+
+    [Fact] public void Diff_after_an_edit_shows_only_the_edited_field()
+    {
+        var d = Fixture.TempSlotFrom(Slot()); var o = Path.Combine(Path.GetTempPath(), "ff2r-dout-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Assert.Equal(0, Run("set", d, "player.senki", "123", "--out", o, "--allow-unverified").code);
+            var (c, so, _) = Run("diff", Path.Combine(d, "SAVEDATA.BIN"), Path.Combine(o, "SAVEDATA.BIN")); Assert.Equal(0, c);
+            Assert.Contains("1 changed value(s): 1 mapped", so); Assert.Contains("5865 -> 123   [player.senki]", so); Assert.DoesNotContain("[player.sen]", so); Assert.Contains("0 byte(s) changed", so);
+        } finally { Directory.Delete(d, true); if (Directory.Exists(o)) Directory.Delete(o, true); }
+    }
+
+    [Fact] public void Diff_rejects_a_dir_against_a_file_and_missing_files()
+    {
+        Assert.Equal(2, Run("diff", Slot(), Fixture.Mine("SAVEDATA00")).code); Assert.Equal(2, Run("diff", "/nonexistent/a.BIN", Fixture.Mine("SAVEDATA00")).code); Assert.Equal(2, Run("diff", Fixture.Mine("SAVEDATA00")).code);
+    }
+
+    [Fact] public void Items_lists_keys_and_counts_and_shows_names_only_when_known()
+    {
+        var (c, o, _) = Run("items", Slot()); Assert.Equal(0, c);
+        Assert.Contains("185346688", o); Assert.Contains("0x0B0C2A80", o); Assert.Contains("166 row(s); 0 with known names", o);
+        var tmp = Path.GetTempFileName(); try
+        {
+            File.WriteAllText(tmp, "{\"items\":[{\"key\":185346688,\"name\":\"Test item\",\"confidence\":\"guessed\"}]}");
+            var o2 = new StringWriter(); Assert.Equal(0, Program.Run(["items", Slot(), "--items", tmp, "--config", Path.Combine(Fixture.Root, "local_config.json")], o2, new StringWriter()));
+            Assert.Contains("Test item [guessed]", o2.ToString()); Assert.Contains("1 with known names", o2.ToString());
+        } finally { File.Delete(tmp); }
+        Assert.Contains("1200 row(s)", Run("items", Slot(), "--all").outp);
+    }
+}

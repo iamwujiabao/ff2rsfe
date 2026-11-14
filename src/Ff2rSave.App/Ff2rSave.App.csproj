@@ -14,5 +14,6 @@
     <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
     <ProjectReference Include="..\Ff2rSave.Core\Ff2rSave.Core.csproj" />
     <None Include="..\..\docs\fields.json" Link="fields.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\docs\items.json" Link="items.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

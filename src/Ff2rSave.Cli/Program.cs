@@ -17,6 +17,8 @@ public static class Program
           get    <file> <fieldId> | --path /Json/Path       read a value (collection fields list all items)
           set    <file|slotdir> <fieldId> <value> (--out <dest> | --in-place) [--path /concrete/path] [--both] [--allow-unverified]
           pack   <in.dec> <out.BIN>                  encrypt a dumped container, recomputing checksums
+          diff   <before> <after> [--max N]          changed header fields / JSON paths (mapped to field ids), slot dirs or .BIN files
+          items  <file|slotdir> [--all] [--items items.json]   owned items with hash key, count and known names
           fields                                     list field ids from fields.json
         set never overwrites the original by default:
           --out <dest>   write an edited COPY (slotdir input: <dest> becomes the slot folder; file input: <dest> is a file or folder). Recommended.
@@ -38,7 +40,7 @@ public static class Program
             return cmd switch
             {
                 "info" => Info(rest, cfg, schema, o), "verify" => Verify(rest, opt, cfg, o), "dump" => Dump(rest, opt, cfg, o),
-                "get" => Get(rest, opt, cfg, schema, o), "set" => Set(rest, opt, cfg, schema, o), "pack" => Pack(rest, cfg, o),
+                "get" => Get(rest, opt, cfg, schema, o), "diff" => Diff(rest, opt, cfg, schema, o), "items" => Items(rest, opt, cfg, o), "set" => Set(rest, opt, cfg, schema, o), "pack" => Pack(rest, cfg, o),
                 _ => Fail($"unknown command '{cmd}'", e)
             };
         }
@@ -68,12 +70,23 @@ public static class Program
         return null;
     }
 
+    static string EmbeddedToTemp(string name)
+    {
+        using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream(name)!; var tmp = Path.GetTempFileName(); using (var f = File.Create(tmp)) s.CopyTo(f); return tmp;
+    }
+
     static FieldSchema LoadSchema(Dictionary<string, string> opt)
     {
         var path = opt.GetValueOrDefault("fields") ?? FindUp("fields.json") ?? FindUp(Path.Combine("docs", "fields.json"));
         if (path != null) return FieldSchema.Load(path);
-        using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("fields.json")!; // embedded default
-        var tmp = Path.GetTempFileName(); try { using (var f = File.Create(tmp)) s.CopyTo(f); return FieldSchema.Load(tmp); } finally { File.Delete(tmp); }
+        var tmp = EmbeddedToTemp("fields.json"); try { return FieldSchema.Load(tmp); } finally { File.Delete(tmp); } // embedded default
+    }
+
+    static ItemCatalog LoadItems(Dictionary<string, string> opt)
+    {
+        var path = opt.GetValueOrDefault("items") ?? FindUp("items.json") ?? FindUp(Path.Combine("docs", "items.json"));
+        if (path != null) return ItemCatalog.Load(path);
+        var tmp = EmbeddedToTemp("items.json"); try { return ItemCatalog.Load(tmp); } finally { File.Delete(tmp); }
     }
 
     static string Need(List<string> r, int i, string what) => r.Count > i ? r[i] : throw new ArgumentException($"missing argument: {what}");
@@ -120,6 +133,47 @@ public static class Program
         while (i < n) { if (a[i] == b[i]) { i++; continue; } int s = i; while (i < n && a[i] != b[i]) i++; r.Add((s, i - s)); }
         if (a.Length != b.Length) r.Add((n, Math.Abs(a.Length - b.Length)));
         return r;
+    }
+
+    /// <summary>Resolves a slot dir to its SAVEDATA.BIN/BACKUP.BIN, or a single file.</summary>
+    static List<(string label, string path)> Targets(string arg) => Directory.Exists(arg)
+        ? new[] { "SAVEDATA.BIN", "BACKUP.BIN" }.Select(n => (n, Path.Combine(arg, n))).Where(t => File.Exists(t.Item2)).ToList() : [(Path.GetFileName(arg), arg)];
+
+    static int Diff(List<string> r, Dictionary<string, string> opt, CryptoConfig cfg, FieldSchema s, TextWriter o)
+    {
+        string a = Need(r, 0, "before"), b = Need(r, 1, "after"); int max = int.TryParse(opt.GetValueOrDefault("max"), out var m) ? m : 100;
+        if (Directory.Exists(a) != Directory.Exists(b)) throw new ArgumentException("compare two slot folders or two files, not one of each.");
+        var ta = Targets(a); var tb = Targets(b); int pairs = 0;
+        foreach (var (label, pa) in ta)
+        {
+            var other = Directory.Exists(a) ? tb.FirstOrDefault(t => t.label == label).path : tb[0].path; if (other == null) continue; pairs++;
+            var fa = SaveFile.Open(pa, cfg); var fb = SaveFile.Open(other, cfg); var d = SaveDiff.Compare(fa, fb, s);
+            o.WriteLine($"== {label}: {pa}  ->  {other}");
+            o.WriteLine($"integrity: before {(fa.LoadProblems.Count == 0 ? "OK" : "PROBLEMS")}, after {(fb.LoadProblems.Count == 0 ? "OK" : "PROBLEMS")}");
+            if (d.Header.Count + d.Json.Count == 0 && d.TailChangedBytes == 0) { o.WriteLine("IDENTICAL (header fields, JSON values and binary tail)"); continue; }
+            foreach (var e in d.Header) o.WriteLine($"  {e.Location,-22} {e.Old} -> {e.New}   [{e.FieldId ?? "unmapped"}]");
+            var mapped = d.Json.Where(e => e.FieldId != null).ToList(); var un = d.Json.Where(e => e.FieldId == null).ToList();
+            o.WriteLine($"json: {d.Json.Count} changed value(s): {mapped.Count} mapped to a known field, {un.Count} unmapped; JSON size {d.JsonBytesA:N0} -> {d.JsonBytesB:N0} bytes");
+            foreach (var e in mapped.Take(max)) o.WriteLine($"  {e.Location}  {e.Old ?? "<absent>"} -> {e.New ?? "<absent>"}   [{e.FieldId}]");
+            if (mapped.Count > max) o.WriteLine($"  ... {mapped.Count - max} more mapped (use --max)");
+            foreach (var e in un.Take(max)) o.WriteLine($"  {e.Location}  {e.Old ?? "<absent>"} -> {e.New ?? "<absent>"}   [unmapped]");
+            if (un.Count > max) o.WriteLine($"  ... {un.Count - max} more unmapped (use --max); by area:");
+            if (un.Count > max) foreach (var g in un.GroupBy(e => string.Join('/', e.Location.Split('/').Take(3))).OrderByDescending(g => g.Count()).Take(12)) o.WriteLine($"      {g.Count(),6}  {g.Key}");
+            o.WriteLine($"binary tail: {d.TailChangedBytes:N0} byte(s) changed in {d.TailRanges:N0} range(s)" + (d.TailChangedBytes > 0 ? " (photo data? not mapped)" : ""));
+            o.WriteLine("(header checksums at 0x50/0x70 are derived and not listed)");
+        }
+        if (pairs == 0) throw new ArgumentException("nothing to compare: no matching SAVEDATA.BIN/BACKUP.BIN in both folders.");
+        return 0;
+    }
+
+    static int Items(List<string> r, Dictionary<string, string> opt, CryptoConfig cfg, TextWriter o)
+    {
+        var target = Need(r, 0, "file or slot dir"); var path = Directory.Exists(target) ? Path.Combine(target, "SAVEDATA.BIN") : target;
+        var f = SaveFile.Open(path, cfg); var names = LoadItems(opt); var rows = ItemListing.Rows(f, names, opt.ContainsKey("all"));
+        o.WriteLine($"{"section",-17} {"idx",4} {"key (dec)",11} {"key (hex)",10} {"key_num",10} {"num",6} {"flag",5}  name");
+        foreach (var x in rows) o.WriteLine($"{x.Section,-17} {x.Index,4} {x.Key,11} {"0x" + x.Key.ToString("X8"),10} {x.KeyNum,10} {x.Num,6} {x.Flag,5}  {(x.Name != null ? $"{x.Name} [{x.NameConfidence}]" : "?")}");
+        o.WriteLine($"{rows.Count} row(s); {rows.Count(x => x.Name != null)} with known names ({names.Count} names in items.json). Names are only filled in from confirmed experiments.");
+        return 0;
     }
 
     static int Dump(List<string> r, Dictionary<string, string> opt, CryptoConfig cfg, TextWriter o)

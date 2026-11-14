@@ -102,6 +102,7 @@ public sealed class HexRows(byte[] now, byte[] orig) : IList
 
 public sealed class MainViewModel : ObservableObject
 {
+    ItemCatalog items = ItemCatalog.Empty;
     CryptoConfig? cfg; FieldSchema? schema; SaveFile? file; SlotVM? selected; string status = ""; string? selectedUserFolder; string hexInfo = "";
     HexRows? hexRows;
     readonly List<RelayCommand> commands = [];
@@ -164,6 +165,7 @@ public sealed class MainViewModel : ObservableObject
         {
             cfg = CryptoConfig.Load(CryptoConfig.Find([AppContext.BaseDirectory, Directory.GetCurrentDirectory()], configPath));
             schema = FieldSchema.Load(Path.Combine(AppContext.BaseDirectory, "fields.json"));
+            items = ItemCatalog.Load(Path.Combine(AppContext.BaseDirectory, "items.json")); // optional: unknown items just show their hash key
             Status = "Ready. Use “Open folder…” (a Savedata\\<id> folder or a single slot folder)." + (IsWindows ? " “Find default location” checks the standard Windows folder." : "");
         }
         catch (Exception ex) when (ex is SaveFormatException or IOException or KeyNotFoundException or System.Text.Json.JsonException)
@@ -219,7 +221,7 @@ public sealed class MainViewModel : ObservableObject
                         {
                             if (d.Id.EndsWith(".num") && file.GetText(d, p) == "0") continue; // only owned items
                             var keyPath = p[..p.LastIndexOf('/')] + "/key"; string key = "";
-                            if (d.Id.EndsWith(".num")) try { key = " key=" + file.GetText(schema["item.key"], keyPath); } catch (Exception ex) when (ex is KeyNotFoundException or SaveFormatException or InvalidOperationException) { }
+                            if (d.Id.EndsWith(".num")) try { var k = file.GetText(schema["item.key"], keyPath); key = " key=" + k + (long.TryParse(k, out var kl) && items.Get(kl) is { } nm ? $" · {nm.Name}{(nm.Confidence == "confirmed" ? "" : " (" + nm.Confidence + ")")}" : ""); } catch (Exception ex) when (ex is KeyNotFoundException or SaveFormatException or InvalidOperationException) { }
                             var idx = p.Split('/').FirstOrDefault(x => x.Length > 0 && x.All(char.IsAsciiDigit)) ?? "?"; Fields.Add(new FieldVM(file, d, p, $"{d.Name} #{idx}{key}", OnChanged));
                         }
                     }
