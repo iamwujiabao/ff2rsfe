@@ -164,6 +164,51 @@ public class SchemaConsistencyTests
     }
 }
 
+public class ItemNamesTests
+{
+    const string Third = "community cheat table (third-party, uncontrolled)";
+    static ItemCatalog Shipped => ItemCatalog.Load(Path.Combine(Fixture.Root, "docs", "items.json"));
+
+    [Fact]
+    public void Shipped_catalog_has_exactly_the_nine_third_party_names_at_likely_and_two_unnamed_keys()
+    {
+        var c = Shipped; Assert.Equal(11, c.Count);
+        var expected = new Dictionary<long, string> { [0x766CE17F] = "Herbal Medicine", [0x179D3D00] = "Stone Mirror", [0x132D6400] = "Type-14 Film", [0x4F9CE17F] = "Prayer Beads", [0x4AFFC0FF] = "Type-00 Film", [0x0AD73580] = "Type-61 Film", [0x282BAA80] = "Lunar Incense", [0x18A56180] = "Type-90 Film", [0x7BDD617F] = "Sacred Water" };
+        foreach (var (k, n) in expected) { var e = c.Get(k)!; Assert.Equal(n, e.Name); Assert.Equal("likely", e.Confidence); Assert.Equal(Third, e.Source); } // never confirmed from third-party data
+        foreach (var k in new long[] { 0x65E72A7F, 0x7A5EBCFF }) { var e = c.Get(k)!; Assert.Null(e.Name); Assert.Contains("unnamed, treated specially in cheat table", e.Note); Assert.Equal(Third, e.Source); }
+    }
+
+    [Fact]
+    public void Unnamed_entries_need_a_note_and_listing_shows_name_or_unknown_hex()
+    {
+        var tmp = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(tmp, "{\"items\":[{\"key\":5,\"note\":\"special, no name\"}]}"); Assert.Null(ItemCatalog.Load(tmp).Get(5)!.Name);
+            File.WriteAllText(tmp, "{\"items\":[{\"key\":5}]}"); Assert.Throws<SaveFormatException>(() => ItemCatalog.Load(tmp));
+            File.WriteAllText(tmp, "{\"items\":[{\"key\":5,\"name\":\"  \"}]}"); Assert.Throws<SaveFormatException>(() => ItemCatalog.Load(tmp));
+        }
+        finally { File.Delete(tmp); }
+        var f = SaveFile.Open(Fixture.Mine("SAVEDATA00"), Fixture.Cfg); var rows = ItemListing.Rows(f, Shipped);
+        Assert.Equal(9, rows.Count(r => r.Name != null)); // my slot owns all nine named items
+        Assert.Equal("Herbal Medicine (likely)", rows.Single(r => r.Key == 0x766CE17F).Display);
+        var unk = rows.Single(r => r.Key == 0x65E72A7F); Assert.Null(unk.Name); Assert.Equal("unknown (0x65E72A7F)", unk.Display); Assert.Contains("unnamed", unk.Note);
+        Assert.StartsWith("unknown (0x", rows.First(r => r.Name == null && r.Note == null).Display);
+    }
+
+    [Fact]
+    public void Named_items_in_every_sample_have_one_row_per_save_and_a_num_in_the_range_seen()
+    {
+        var c = Shipped; int checkedSaves = 0;
+        foreach (var path in Fixture.AllBins().Where(p => !p.Contains("SYSTEM") && p.EndsWith("SAVEDATA.BIN")))
+        {
+            var rows = ItemListing.Rows(SaveFile.Open(path, Fixture.Cfg), c).Where(r => r.Name != null).ToList();
+            Assert.Equal(rows.Count, rows.Select(r => r.Key).Distinct().Count()); Assert.All(rows, r => Assert.InRange(r.Num, 0, 99999)); checkedSaves++;
+        }
+        Assert.True(checkedSaves >= 3);
+    }
+}
+
 public class AppliedProposalsTests
 {
     [Fact]

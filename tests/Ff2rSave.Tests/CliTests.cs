@@ -159,7 +159,8 @@ public class CliDiffItemsTests
     [Fact] public void Items_lists_keys_and_counts_and_shows_names_only_when_known()
     {
         var (c, o, _) = Run("items", Slot()); Assert.Equal(0, c);
-        Assert.Contains("185346688", o); Assert.Contains("0x0B0C2A80", o); Assert.Contains("166 row(s); 0 with known names", o);
+        Assert.Contains("185346688", o); Assert.Contains("0x0B0C2A80", o); Assert.Contains("unknown (0x0B0C2A80)", o); Assert.Contains("166 row(s); 9 with known names (11 names in items.json)", o);
+        Assert.Contains("Herbal Medicine [likely]", o); Assert.Contains("unknown (0x65E72A7F) - unnamed, treated specially in cheat table", o); Assert.Contains("third-party and uncontrolled", o);
         var tmp = Path.GetTempFileName(); try
         {
             File.WriteAllText(tmp, "{\"items\":[{\"key\":185346688,\"name\":\"Test item\",\"confidence\":\"guessed\"}]}");

@@ -1,5 +1,17 @@
 {
   "schema": 1,
-  "note": "Hash key -> item name. Only add entries backed by evidence (see docs/experiment_log.md). source = how it was learned, confidence = confirmed|likely|guessed. Starts empty on purpose.",
-  "items": []
+  "note": "Item hash key -> name. SOURCE OF THESE NAMES: a community Cheat Engine table (third-party, NOT a controlled experiment). Names are therefore 'likely' at most; 'confirmed' needs experiment #2 in docs/experiments.md (own before/after saves + the in-game item name and count). Keys 1709648511 and 2053029119 are deliberately unnamed: the same table treats them specially in its 'max stack' routine but gives no name. Observed behaviour of every key is in docs/items_observed.md.",
+  "items": [
+    {"key": 1986847103, "key_hex": "0x766CE17F", "name": "Herbal Medicine", "source": "community cheat table (third-party, uncontrolled)", "confidence": "likely"},
+    {"key": 396180736, "key_hex": "0x179D3D00", "name": "Stone Mirror", "source": "community cheat table (third-party, uncontrolled)", "confidence": "likely", "note": "the cheat table excludes this key from its 'set to 99' routine; 99 is nevertheless seen in 3 sample saves"},
+    {"key": 321741824, "key_hex": "0x132D6400", "name": "Type-14 Film", "source": "community cheat table (third-party, uncontrolled)", "confidence": "likely", "note": "never below 14 in 41 sample saves"},
+    {"key": 1335681407, "key_hex": "0x4F9CE17F", "name": "Prayer Beads", "source": "community cheat table (third-party, uncontrolled)", "confidence": "likely", "note": "num goes above 99 in the samples (128, 146, 420, 99999)"},
+    {"key": 1258275071, "key_hex": "0x4AFFC0FF", "name": "Type-00 Film", "source": "community cheat table (third-party, uncontrolled)", "confidence": "likely"},
+    {"key": 181876096, "key_hex": "0x0AD73580", "name": "Type-61 Film", "source": "community cheat table (third-party, uncontrolled)", "confidence": "likely"},
+    {"key": 673950336, "key_hex": "0x282BAA80", "name": "Lunar Incense", "source": "community cheat table (third-party, uncontrolled)", "confidence": "likely"},
+    {"key": 413491584, "key_hex": "0x18A56180", "name": "Type-90 Film", "source": "community cheat table (third-party, uncontrolled)", "confidence": "likely"},
+    {"key": 2078105983, "key_hex": "0x7BDD617F", "name": "Sacred Water", "source": "community cheat table (third-party, uncontrolled)", "confidence": "likely"},
+    {"key": 1709648511, "key_hex": "0x65E72A7F", "source": "community cheat table (third-party, uncontrolled)", "note": "unnamed, treated specially in cheat table"},
+    {"key": 2053029119, "key_hex": "0x7A5EBCFF", "source": "community cheat table (third-party, uncontrolled)", "note": "unnamed, treated specially in cheat table; num is 99999 in 3 sample saves and 50 in 10"}
+  ]
 }

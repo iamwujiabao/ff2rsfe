@@ -242,7 +242,7 @@ public sealed class MainViewModel : ObservableObject
                         {
                             if (d.Id.EndsWith(".num") && file.GetText(d, p) == "0") continue; // only owned items
                             var keyPath = p[..p.LastIndexOf('/')] + "/key"; string key = "";
-                            if (d.Id.EndsWith(".num")) try { var k = file.GetText(schema["item.key"], keyPath); key = " key=" + k + (long.TryParse(k, out var kl) && items.Get(kl) is { } nm ? $" · {nm.Name}{(nm.Confidence == "confirmed" ? "" : " (" + nm.Confidence + ")")}" : ""); } catch (Exception ex) when (ex is KeyNotFoundException or SaveFormatException or InvalidOperationException) { }
+                            if (d.Id.EndsWith(".num")) try { long.TryParse(file.GetText(schema["item.key"], keyPath), out var kl); var nm = items.Get(kl); key = " · " + (nm?.Name != null ? $"{nm.Name}{(nm.Confidence == "confirmed" ? "" : " (" + nm.Confidence + ")")}" : $"unknown (0x{kl:X8})"); } catch (Exception ex) when (ex is KeyNotFoundException or SaveFormatException or InvalidOperationException) { }
                             var idx = p.Split('/').FirstOrDefault(x => x.Length > 0 && x.All(char.IsAsciiDigit)) ?? "?"; Fields.Add(new FieldVM(file, d, p, $"{d.Name} #{idx}{key}", OnChanged));
                         }
                     }

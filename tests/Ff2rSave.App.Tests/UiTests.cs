@@ -132,7 +132,8 @@ public class UiTests
             var prog = vm.Fields.First(f => f.Def.Id == "mission.progress"); Assert.DoesNotContain("never seen", prog.StatusText);
             prog.Value = "9031"; Assert.False(prog.HasError); Assert.Contains("value never seen in any sample", prog.StatusText);
             prog.Value = "9036"; Assert.DoesNotContain("never seen", prog.StatusText);
-            Assert.Contains(vm.Fields, f => f.Label.Contains("key=")); // item rows still show their hash key
+            Assert.Contains(vm.Fields, f => f.Label.Contains("Herbal Medicine (likely)")); Assert.Contains(vm.Fields, f => f.Label.Contains("unknown (0x")); // item rows show the (third-party, likely) name or the hex key
+            Assert.DoesNotContain(vm.Fields, f => f.Label.Contains("(confirmed)"));
         }
         finally { w.Close(); Directory.Delete(dir, true); }
     }

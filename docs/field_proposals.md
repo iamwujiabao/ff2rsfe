@@ -97,3 +97,17 @@ Rule used: descriptions and observed-value notes may follow the data; confidence
 - `docs/experiments.md` experiment 5: the caution that `lap_num` is 1 in every sample now holds for all 42 saves, and the example 'lap_num = 2 in N of N NG+ saves' does **not** occur. The experiment is still the right test.
 - `docs/save_format.md`: 'samples use 0.79-0.80 MB' of JSON is now 0.778-0.801 MB (cap 1,024,000 B).
 
+
+## 5. PROPOSAL (not applied): `item.num` and item names
+
+**Evidence limits first.** The new names and the layout of an inventory entry come from a community Cheat Engine table: third-party, from another game build (its own header says v2.02.02; a trainer for it says v1.02; ours is a different file), **not** a controlled experiment, and not yet checked against our exe (optional Step 3). It can support `likely`, never `confirmed`.
+
+| field | current | proposed | reasoning | limits |
+|---|---|---|---|---|
+| `item.num` | guessed | **likely** | (1) the table's inventory code compares a 4-byte key at entry+0 with an item hash and reads/writes the quantity at entry+8 in 16-byte entries; our save lists `key`, `key_num`, `num`, `flag`, which would be offsets 0, 4, 8, 12; (2) in the 42 samples each key has at most one row per save, rows stay at 0 after use (4 of the nine named keys have such a row), and Type-14 Film is never below 14; (3) `key_num` is unique per row and varies per save, so it is not the count (docs/items_observed.md) | the layout match is a pattern match, not a proof; Prayer Beads (128-420, 99999) and key `0x7A5EBCFF` (99999) exceed the table's 99; the real per-item limits are unknown; saves with 99999 may be hand-edited; experiment 2 has not been run |
+| `item.key` | guessed | **likely** (optional) | the table compares this dword with fixed hashes to identify items, which agrees with 'hash id' | same as above; says nothing about names |
+| `item.num` max | 99999 | unchanged | 99999 is seen in 3 samples | no evidence of the real limit |
+| item names (`docs/items.json`) | none | 9 names at `likely` + 2 unnamed (applied in Step 2) | third-party table | `confirmed` only via experiment 2 |
+
+If you approve the two promotions I will apply them in one small commit; until then `fields.json` is unchanged.
+

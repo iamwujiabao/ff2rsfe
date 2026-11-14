@@ -24,14 +24,30 @@ Each experiment produces a **before/after pair of slot folders**. You run the co
 **Rejects:** neither changes by the price. Then look at `[unmapped]` lines whose old/new differ by the price: the currency is elsewhere.
 **Updates:** `player.senki`, `player.sen` (and `player.bukun` if it moves).
 
-## 2. One item: what are `key`, `num` and `key_num`?
-**Hypothesis:** an owned item is an `ItemObjectData` row identified by the hash `key`; `num` is its quantity. (The `items` listing shows another column, `key_num`, whose meaning is unknown: it varies per row (1, 0, 40, 287, 367, ...) while `num` is 1 for almost every row, so the stack count may live in `key_num` instead.)
-**Do:** before: write down the count of a stackable item you know (e.g. a healing item) and note one item you do **not** own yet. Pick up exactly one more of the stackable item (A) and, separately in another pair, pick up the new item (B). Save after each.
-**Run:** `ff2rsave diff <before> <after>` and, for context, `ff2rsave items <after>` / `ff2rsave items <before>`.
-**Confirms (A):** exactly one `/PossessionItemData/possession_items/N/ItemObjectData/<field>` changes by +1. If it is `num`, quantity = `num` (field `item.num` -> likely); if it is `key_num`, the quantity is `key_num` and `item.num` must be redefined.
-**Confirms (B):** a previously empty row (`key == 0`) becomes the new `key` with `num == 1`: that `key` is the hash of the item. Add it to `docs/items.json` with `source: "experiment <date> <slot>"` and `confidence: "likely"` (-> `confirmed` after a second sighting of the same key for the same item in another save).
-**Rejects:** several unrelated item rows change, or the row index shifts (the list is re-sorted): record how rows are ordered before editing quantities.
-**Updates:** `item.num`, `item.key`, `docs/items.json`.
+## 2. One item: names, quantity (`num`) and the other columns
+**Background:** `docs/items.json` now holds nine item names taken from a community Cheat Engine table. That is **third-party, uncontrolled evidence from another game build**: it can make a name `likely` at most. **This experiment is what can make a name `confirmed`**, and it also tests whether `num` is the quantity. Prior sample evidence is in `docs/items_observed.md` (all nine keys occur in 31-41 of 42 saves; rows stay at 0 after use; a few stacks go above 99).
+**Hypotheses:** (a) an owned item is an `ItemObjectData` row identified by the hash `key`; (b) `num` is its quantity (the table reads the quantity at +8 of a 16-byte entry; our save order is key, key_num, num, flag); (c) `key_num` is a per-instance id, not a count; (d) the names in `items.json` are right.
+**Do (names + quantity, repeat for at least 3 different named items, ideally one film, one healing item and Prayer Beads):** before: write down the in-game **name and count** of the item (screenshot of the item menu). Pick up exactly one more (or use exactly one), save in the same slot, screenshot again.
+**Run:** `ff2rsave diff <before> <after>` and `ff2rsave items <after>` (look at the row of the key in the table below).
+| item (table name) | key |
+|---|---|
+| Herbal Medicine | `0x766CE17F` |
+| Stone Mirror | `0x179D3D00` |
+| Type-14 Film | `0x132D6400` |
+| Prayer Beads | `0x4F9CE17F` |
+| Type-00 Film | `0x4AFFC0FF` |
+| Type-61 Film | `0x0AD73580` |
+| Lunar Incense | `0x282BAA80` |
+| Type-90 Film | `0x18A56180` |
+| Sacred Water | `0x7BDD617F` |
+| *(unnamed)* | `0x65E72A7F`, `0x7A5EBCFF` |
+**Confirms the quantity field (b):** exactly one `/PossessionItemData/possession_items/N/ItemObjectData/num` changes, by the same amount you picked up or used, and the in-game count matches. If instead `key_num` changes, the quantity is `key_num` and `item.num` must be redefined.
+**Confirms a name (d):** the row that changes has the key listed above **and** the in-game item name equals the table name. Record each name separately in `docs/experiment_log.md`; one clean pair makes it `likely` (it already is), a second independent pair of the same item (other slot or other amount) makes it `confirmed`.
+**Rejects a name:** the row that changes has a different key than the table lists for that in-game name. Record the correct key and lower the entry in `items.json`.
+**Cap checks (optional but valuable):** with an item you can afford to farm or buy, see how far its count goes. The table's "max stack" routine writes 99, but in the samples Prayer Beads reaches 128-420 (and 99999 in 3 saves) and the unnamed `0x7A5EBCFF` is 50 in 10 saves and 99999 in 3, so the real per-item limits are unknown. Do not edit saves to test caps; only observe what the game lets you hold.
+**Identify the unnamed keys:** pick up the item that makes `0x65E72A7F` or `0x7A5EBCFF` appear/change and record its in-game name.
+**Rejects hypothesis (b):** several unrelated item rows change, the changed row is not the one with the expected key, or the count shown in-game differs from `num`.
+**Updates:** `item.num` (see the proposal in `docs/field_proposals.md` section 5), `docs/items.json` (confidence, new names, the two unnamed keys).
 
 ## 3. Write order: what do `SAVEDATA.BIN` and `BACKUP.BIN` contain after a save?
 **Hypotheses:** (H1) each save rotates the old SAVEDATA into BACKUP; (H2) both files are written identically each save; (H3) BACKUP is only refreshed sometimes.

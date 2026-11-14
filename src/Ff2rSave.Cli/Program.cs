@@ -187,8 +187,8 @@ public static class Program
         var target = Need(r, 0, "file or slot dir"); var path = Directory.Exists(target) ? Path.Combine(target, "SAVEDATA.BIN") : target;
         var f = SaveFile.Open(path, cfg); var names = LoadItems(opt); var rows = ItemListing.Rows(f, names, opt.ContainsKey("all"));
         o.WriteLine($"{"section",-17} {"idx",4} {"key (dec)",11} {"key (hex)",10} {"key_num",10} {"num",6} {"flag",5}  name");
-        foreach (var x in rows) o.WriteLine($"{x.Section,-17} {x.Index,4} {x.Key,11} {"0x" + x.Key.ToString("X8"),10} {x.KeyNum,10} {x.Num,6} {x.Flag,5}  {(x.Name != null ? $"{x.Name} [{x.NameConfidence}]" : "?")}");
-        o.WriteLine($"{rows.Count} row(s); {rows.Count(x => x.Name != null)} with known names ({names.Count} names in items.json). Names are only filled in from confirmed experiments.");
+        foreach (var x in rows) o.WriteLine($"{x.Section,-17} {x.Index,4} {x.Key,11} {"0x" + x.Key.ToString("X8"),10} {x.KeyNum,10} {x.Num,6} {x.Flag,5}  {(x.Name != null ? $"{x.Name} [{x.NameConfidence}]" : $"unknown (0x{x.Key:X8})")}{(x.Note != null ? " - " + x.Note : "")}");
+        o.WriteLine($"{rows.Count} row(s); {rows.Count(x => x.Name != null)} with known names ({names.Count} names in items.json). Names come from items.json: third-party and uncontrolled unless marked confirmed (confirming needs experiment #2).");
         return 0;
     }
 
