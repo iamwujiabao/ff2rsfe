@@ -72,7 +72,8 @@ public sealed class FieldVM : ObservableObject
     public bool Unverified => Def.IsUnverified;
     bool Locked => Def.IsUnverified && !file.AllowUnverified;
     public void RefreshStatus() { Raise(nameof(StatusText)); }
-    public string StatusText => HasError ? "✖ " + error : !Def.Editable ? "read-only" : Locked ? "🔒 locked (unverified)" : Def.IsUnverified ? "⚠ unverified (" + Def.Confidence + ")" : "confirmed";
+    bool NeverSeen => Def.ObservedValues is { } ov && long.TryParse(text, out var v) && !ov.Contains(v);
+    public string StatusText => (HasError ? "✖ " + error : !Def.Editable ? "read-only" : Locked ? "🔒 locked (unverified)" : Def.IsUnverified ? "⚠ unverified (" + Def.Confidence + ")" : "confirmed") + (Def.Editable && !HasError && NeverSeen ? " · value never seen in any sample" : "");
     public string RangeText => Def.Min is null ? "" : $"{Def.Min}…{Def.Max}";
     public string Description => Def.Description;
 }
@@ -217,6 +218,7 @@ public sealed class MainViewModel : ObservableObject
                 {
                     if (d.Source == "json" && (d.Collection || d.Path.Contains('*')))
                     {
+                        if (!d.Editable) continue; // informational collections (item key, key_num, ...) are shown in each item row's label / via the CLI, not as ~650 extra rows each
                         foreach (var p in file.Expand(d.Path))
                         {
                             if (d.Id.EndsWith(".num") && file.GetText(d, p) == "0") continue; // only owned items

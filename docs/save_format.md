@@ -21,7 +21,8 @@ Whether `<id>` is the Steam AccountID is [G] (value 1000000000 for my saves fits
 | 0x24 | 4 | main_mission_progress [C] |
 | 0x28 | 8 | total_play_time copy [C]; unit µs [G] |
 | 0x30 | 8 | Unix time [C] |
-| 0x38,0x3C,0x40,0x48 | | game-state copies, meaning unknown [G] (see fields.json) |
+| 0x38,0x3C,0x40 | | game-state copies, meaning unknown [G] (see fields.json) |
+| 0x48 | 4 | completion code [L]: `current_end_` + 10 x `difficulty_clear_flag_[3]` + 100 x `is_new_game_plus_tutorial_compl` (42/42 saves; uncontrolled) |
 | 0x4C | 1 | non-zero => payload encrypted [L] (random-looking byte) |
 | 0x50 | 32 | checksum of the **plaintext payload** [C] |
 | 0x70 | 32 | checksum of the 0x100 header with 0x70..0x8F zeroed [C] |
@@ -37,7 +38,7 @@ Function at exe rva 0xc14ea0, custom 32-byte keyed checksum, reimplemented in `t
 state S[32]=0; for each byte `b` at index `i`: add `b` (mod 2^16, little-endian lanes) to lane at S[0], S[2+2*((i>>2)&1)], S[6+2*(i&3)]; then for k in 0..30: `S[k+1] += S[k] + 2k (mod 256)`; output[j] = `(A[S[j]] + B[j]) mod 256` with A (256 B) and B (32 B) immediates in the function (extracted at runtime). Hash order on write: payload first (0x50), then header (0x70).
 
 ## Plaintext layout [C]
-`[0:8]` version qword 0x24121300, `[8:16]` zero, `[16 : 16+n]` compact JSON (`separators=(",",":")`, UTF-8, byte-identical re-serialization verified), zero padding up to plaintext offset 0xFA010 (JSON area = 1,024,000 B; samples use 0.79-0.80 MB), then a binary tail (~8.3 MB, changes heavily between saves; likely photo data referenced by `PHOTO_SLOT`) [G]. System save: same prefix, JSON about 0.42 MB, then binary.
+`[0:8]` version qword 0x24121300, `[8:16]` zero, `[16 : 16+n]` compact JSON (`separators=(",",":")`, UTF-8, byte-identical re-serialization verified), zero padding up to plaintext offset 0xFA010 (JSON area = 1,024,000 B; samples use 0.778-0.801 MB of it (42 unique user saves)), then a binary tail (~8.3 MB, changes heavily between saves; likely photo data referenced by `PHOTO_SLOT`) [G]. System save: same prefix, JSON about 0.42 MB, then binary.
 Editing rule: parse JSON, change values, re-serialize compactly, zero-pad to the same area, leave the tail untouched, then recompute 0x50 and 0x70.
 
 ## JSON sections (user save)

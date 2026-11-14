@@ -101,6 +101,21 @@ public class UiTests
     }
 
     [AvaloniaFact]
+    public void Read_only_collections_are_hidden_and_never_seen_values_get_a_hint()
+    {
+        var (w, vm, dir) = Open();
+        try
+        {
+            Assert.DoesNotContain(vm.Fields, f => f.Def.Id is "item.key" or "item.key_num" or "item.entry_number"); Assert.True(vm.Fields.Count < 400);
+            var prog = vm.Fields.First(f => f.Def.Id == "mission.progress"); Assert.DoesNotContain("never seen", prog.StatusText);
+            prog.Value = "9031"; Assert.False(prog.HasError); Assert.Contains("value never seen in any sample", prog.StatusText);
+            prog.Value = "9036"; Assert.DoesNotContain("never seen", prog.StatusText);
+            Assert.Contains(vm.Fields, f => f.Label.Contains("key=")); // item rows still show their hash key
+        }
+        finally { w.Close(); Directory.Delete(dir, true); }
+    }
+
+    [AvaloniaFact]
     public async Task Default_save_exports_a_copy_and_never_touches_the_original()
     {
         var (w, vm, dir) = Open(); var dest = Path.Combine(Path.GetTempPath(), "ff2r-uiexp-" + Guid.NewGuid().ToString("N"));

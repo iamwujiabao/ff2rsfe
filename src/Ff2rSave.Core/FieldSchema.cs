@@ -10,6 +10,8 @@ public sealed class FieldDef
     public long? Min { get; set; } public long? Max { get; set; } public bool Editable { get; set; }
     public bool Collection { get; set; } public string Description { get; set; } = ""; public string Confidence { get; set; } = "guessed";
     [JsonPropertyName("derived_from")] public string? DerivedFrom { get; set; }
+    /// <summary>Values seen in sample saves (a non-binding hint: other values may or may not be valid).</summary>
+    [JsonPropertyName("observed_values")] public long[]? ObservedValues { get; set; }
     public bool IsUnverified => Confidence != "confirmed";
     public int HeaderWidth => Type switch { "u8" => 1, "u32" => 4, "u64" => 8, _ => throw new SaveFormatException($"Bad header type {Type} in {Id}") };
 }

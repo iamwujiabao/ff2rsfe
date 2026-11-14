@@ -56,7 +56,7 @@ Each experiment produces a **before/after pair of slot folders**. You run the co
 **Updates:** `player.total_play_time`, `hdr.play_time` descriptions and the app's play-time display.
 
 ## 5. Lap / New Game+
-**Hypothesis:** `/MissionData/lap_num` (and header 0x1C `hdr.lap`) is the NG+ lap counter. *Caution:* every sample, including the two Nexus "NG+" saves, shows `1`, so either those are first-lap saves or the field is not the counter.
+**Hypothesis:** `/MissionData/lap_num` (and header 0x1C `hdr.lap`) is the NG+ lap counter. *Caution:* all 42 unique sample saves (including the ones other players label NG+) show `1`, so either those are first-lap saves or the field is not the counter; the example of finding `lap_num` = 2 in NG+ saves does **not** occur in that data (`docs/field_proposals.md`).
 **Do:** from a **cleared** game, start New Game+, save in the first room (`NGP`). Keep a save of the clear (`CLEAR`) for comparison.
 **Run:** for each: `ff2rsave get <slot>\SAVEDATA.BIN mission.lap_num`, `... mission.last_lap`, `... hdr.lap`, `... record.current_end`, `... record.ngp_tutorial`; and `ff2rsave diff CLEAR NGP --max 30`.
 **Confirms:** `mission.lap_num` differs between the first-run save and the NG+ save (record the exact numbers, e.g. 1 -> 2 or 0 -> 1) and `hdr.lap` follows it.

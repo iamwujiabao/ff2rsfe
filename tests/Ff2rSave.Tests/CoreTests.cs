@@ -161,6 +161,34 @@ public class SchemaConsistencyTests
     }
 }
 
+public class AppliedProposalsTests
+{
+    [Fact]
+    public void Schema_reflects_the_applied_observations_and_keeps_the_evidence_rules()
+    {
+        var s = Fixture.Schema;
+        Assert.Equal("likely", s["hdr.u48"].Confidence); Assert.Equal("likely", s["record.ngp_tutorial"].Confidence); Assert.False(s["hdr.u48"].Editable);
+        Assert.Equal(new[] { "hdr.checkpoint", "hdr.chapter", "hdr.payload_len", "hdr.play_time", "hdr.timestamp", "hdr.user_id", "mission.progress" }.Order(), s.Fields.Where(f => f.Confidence == "confirmed").Select(f => f.Id).Order()); // uncontrolled data confirmed nothing new
+        Assert.Equal(25, s["mission.progress"].ObservedValues!.Length); Assert.Contains(9030L, s["mission.progress"].ObservedValues!);
+        Assert.Equal(10, s["player.current_film_slot"].Max); // optional tightening was deliberately NOT applied
+        foreach (var id in new[] { "item.key_num", "item.entry_number" }) { var d = s[id]; Assert.True(d.Collection && !d.Editable && d.Confidence == "guessed"); }
+        var f = SaveFile.Open(Fixture.Mine("SAVEDATA00"), Fixture.Cfg); Assert.Equal(650, f.Expand(s["item.key_num"].Path).Count());
+        Assert.Throws<InvalidOperationException>(() => f.SetInt(s["item.key_num"], 1, f.Expand(s["item.key_num"].Path).First()));
+    }
+
+    [Fact]
+    public void Header_0x48_packed_code_formula_holds_in_every_sample()
+    {
+        var s = Fixture.Schema; int n = 0;
+        foreach (var p in Fixture.AllBins().Where(p => !p.Contains("SYSTEM") && p.EndsWith("SAVEDATA.BIN")))
+        {
+            var f = SaveFile.Open(p, Fixture.Cfg); long ce = f.GetInt(s["record.current_end"]); long d3 = f.GetBool(s["record.difficulty_clear"], "/PlayRecordData/difficulty_clear_flag_/3") ? 1 : 0; long tut = f.GetBool(s["record.ngp_tutorial"]) ? 1 : 0;
+            Assert.Equal(ce + 10 * d3 + 100 * tut, f.GetInt(s["hdr.u48"])); n++;
+        }
+        Assert.True(n >= 3);
+    }
+}
+
 public class SlotAndBackupTests
 {
     static string TempSlot() => Fixture.TempSlotFrom(Path.GetDirectoryName(Fixture.Mine("SAVEDATA00"))!);
