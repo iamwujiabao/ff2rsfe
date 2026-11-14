@@ -22,7 +22,7 @@ public class CliTests
 
     [Fact] public void Verify_ok_for_all_samples_and_fails_for_corrupt()
     {
-        var (c, o, _) = Run("verify", Fixture.Samples); Assert.Equal(0, c); Assert.Contains("14/14 OK", o);
+        var (c, o, _) = Run("verify", Fixture.Samples); Assert.Equal(0, c); int n = Fixture.AllBins().Count(); Assert.Contains($"{n}/{n} OK", o); Assert.True(n >= 14);
         var d = Slot(); try
         {
             var p = Path.Combine(d, "SAVEDATA.BIN"); var raw = File.ReadAllBytes(p); raw[0x21] ^= 1; File.WriteAllBytes(p, raw);
@@ -72,7 +72,7 @@ public class CliTests
 
     [Fact] public void Verify_roundtrip_passes_for_all_samples_and_reports_exact_offsets_when_bytes_differ()
     {
-        var (c, o, _) = Run("verify", Fixture.Samples, "--roundtrip"); Assert.Equal(0, c); Assert.Equal(14, o.Split("ROUNDTRIP OK").Length - 1);
+        var (c, o, _) = Run("verify", Fixture.Samples, "--roundtrip"); Assert.Equal(0, c); Assert.Equal(Fixture.AllBins().Count(), o.Split("ROUNDTRIP OK").Length - 1);
         var d = Slot(); try
         {
             var p = Path.Combine(d, "SAVEDATA.BIN"); var raw = File.ReadAllBytes(p); raw[0x20] ^= 1; File.WriteAllBytes(p, raw); // header checksum no longer matches

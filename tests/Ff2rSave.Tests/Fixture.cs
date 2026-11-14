@@ -16,7 +16,7 @@ public static class Fixture
             if (File.Exists(Path.Combine(d.FullName, "docs", "fields.json"))) return d.FullName;
         throw new InvalidOperationException("repo root not found");
     }
-    public static IEnumerable<string> AllBins() => Directory.Exists(Samples) ? Directory.GetFiles(Samples, "*.BIN", SearchOption.AllDirectories).Order() : [];
+    public static IEnumerable<string> AllBins() => Directory.Exists(Samples) ? Directory.GetFiles(Samples, "*.BIN", SearchOption.AllDirectories).Where(f => !f.Contains("__MACOSX") && !Path.GetFileName(f).StartsWith("._")).Order() : [];
     public static string Mine(string slot, string file = "SAVEDATA.BIN") => Path.Combine(Samples, "mine", slot, file);
 
     public static string TempSlotFrom(string slotDir)

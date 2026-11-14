@@ -12,7 +12,7 @@ public static class Program
 
         usage: ff2rsave <command> [args] [--config local_config.json] [--fields fields.json]
           info   <file|slotdir>                      header, integrity, key fields
-          verify <file|dir> [--roundtrip]            check integrity; --roundtrip also re-encrypts each file and compares bytes
+          verify <file|dir>... [--roundtrip]         check integrity; --roundtrip also re-encrypts each file and compares bytes
           dump   <file> (--raw out.dec | --json out.json)   decrypted container / JSON section
           get    <file> <fieldId> | --path /Json/Path       read a value (collection fields list all items)
           set    <file|slotdir> <fieldId> <value> (--out <dest> | --in-place) [--path /concrete/path] [--both] [--allow-unverified]
@@ -105,7 +105,8 @@ public static class Program
 
     static int Verify(List<string> r, Dictionary<string, string> opt, CryptoConfig cfg, TextWriter o)
     {
-        var target = Need(r, 0, "file or dir"); var files = Directory.Exists(target) ? Directory.GetFiles(target, "*.BIN", SearchOption.AllDirectories).Order().ToList() : [target];
+        Need(r, 0, "file or dir"); // several files/dirs may be given; macOS junk (__MACOSX, ._*) is skipped when walking a dir
+        var files = r.SelectMany<string, string>(t => Directory.Exists(t) ? Directory.EnumerateFiles(t, "*.BIN", SearchOption.AllDirectories).Where(f => !f.Contains($"{Path.DirectorySeparatorChar}__MACOSX{Path.DirectorySeparatorChar}") && !Path.GetFileName(f).StartsWith("._")).Order().ToList() : new List<string> { t }).ToList();
         bool rt = opt.ContainsKey("roundtrip"); int bad = 0;
         foreach (var p in files)
         {
