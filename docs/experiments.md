@@ -44,6 +44,7 @@ Each experiment produces a **before/after pair of slot folders**. You run the co
 **Confirms H2:** the 3rd command prints `IDENTICAL` after every save.
 **H3 / other:** neither pattern holds; report all snapshots. Also note which file has the earlier `LastWriteTime` (weak evidence of which is written first).
 **Rejects:** whichever hypothesis the output contradicts. A single pair cannot confirm an order claim: need S0->S1->S2 as above, ideally repeated once.
+**Prior uncontrolled evidence:** `docs/observations.md` §1 (33 of 37 slots identical, 4 with BACKUP older, none newer; H2 contradicted unless files were copied; H1 vs H3 undecided).
 **Updates:** `docs/save_format.md` (SAVEDATA/BACKUP section) and the default `BackupFilePolicy` (currently `PrimaryOnly`, chosen only because it cannot destroy the older generation).
 
 ## 4. Play time: unit of `total_play_time` (and header 0x28)
@@ -64,6 +65,7 @@ Each experiment produces a **before/after pair of slot folders**. You run the co
 
 ## 6. Rebind to another user ID
 **Hypothesis:** the loader refuses a save whose header user ID (`hdr.user_id`) differs from the current user's ID, and rewriting that ID (checksums recomputed) makes it load. **Never tested in the game.**
+**Prior uncontrolled evidence and extra steps:** `docs/observations.md` §2 (one uploader's readme number equals their header ID; a short 4-digit ID is shared by two uploaders; the readmes mention a "steam file" in the ID folder). Also list the names and sizes of the files in your `Savedata\<id>` folder, compare folder name / `info` user id / your Steam AccountID (friend code), and try Steam offline.
 **Prerequisites:** FF2RFix ("Remove Save ID Check") must **not** be installed for this test (remove `FF2RFix.asi` / `dinput8.dll` from the game folder, and put them back after). Use a spare slot.
 **Do:**
  1. `ff2rsave info <one of your own slots>` -> note `user id`. **Compare it with your `Savedata\<digits>` folder name.** If they are not equal, stop and report (the "folder = user ID" claim is then wrong).
